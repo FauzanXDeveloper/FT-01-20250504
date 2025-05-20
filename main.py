@@ -79,7 +79,12 @@ btn_report = ctk.CTkButton(
     width=150,
     height=40,
     font=("Arial", 15, "bold"),
+    fg_color="transparent",
+    bg_color="transparent",
     corner_radius=10,
+    border_width=2,
+    border_color="blue"
+    
 )
 btn_report.pack(pady=10, padx=(0, 0))
 
@@ -88,8 +93,12 @@ btn_another = ctk.CTkButton(
     text="Excel All Task",
     width=150,
     height=40,
+    fg_color="transparent",
+    bg_color="transparent",
     font=("Arial", 15, "bold"),
     corner_radius=10,
+    border_width=2,
+    border_color="blue"
 )
 btn_another.pack(pady=10, padx=(0, 0))
 
@@ -687,7 +696,7 @@ class ExcelAllTask:
         # --- Animated GIF Loading (rotating and small) ---
         self.loading_gif = Image.open("loading.gif")
         self.loading_frames = []
-        size = (42, 42)  # Small icon
+        size = (64, 64)  # Small icon
         for angle in range(0, 360, 30):  # 12 frames for smooth rotation
             frame = self.loading_gif.copy().resize(size, Image.LANCZOS).convert("RGBA")
             rotated = frame.rotate(angle)
