@@ -9,6 +9,8 @@ import xml.dom.minidom
 import customtkinter as ctk 
 from tkinter import filedialog
 from PIL import Image, ImageTk
+from customtkinter import CTkTabview
+from collections import defaultdict
 from lxml import etree, html
 from xml.sax.saxutils import escape
 from xml.dom import minidom
@@ -44,7 +46,7 @@ class CTOSReportApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("CTOS Report Generator")
-        self.geometry("900x600")
+        self.geometry("1800x900")
 
         # Shared data for all views
         self.shared_data = None  # This will hold the imported Excel data
@@ -70,6 +72,11 @@ class CTOSReportApp(ctk.CTk):
             self.sidebar, text="CTOS Report", command=self.show_ctos_report
         )
         self.ctos_report_button.pack(pady=20, padx=20)
+        
+        self.ctos_summary_butoon = ctk.CTkButton(
+            self.sidebar, text="CTOS Summary", command=self.show_ctos_summary
+        )
+        self.ctos_summary_butoon.pack(pady=20, padx=20)
 
         # Add space between sidebar and main content
         self.sidebar_spacer = ctk.CTkFrame(self, width=20, fg_color="transparent")
@@ -82,6 +89,7 @@ class CTOSReportApp(ctk.CTk):
         # Initialize Views
         self.xml_format_view = XMLFormatView(self.main_frame, self)
         self.ctos_report_view = CTOSReportView(self.main_frame, self)
+        self.ctos_summary_view = CTOSSummaryView(self.main_frame, self)
 
         # Show Default View
         self.show_xml_format()
@@ -92,6 +100,7 @@ class CTOSReportApp(ctk.CTk):
         self.progress_popup.geometry("300x100")
         self.progress_popup.resizable(False, False)
         self.progress_popup.grab_set()  # Block interaction with main window
+        self.progress_popup.attributes("-topmost", True)  # ✅ Always on top
 
         ctk.CTkLabel(self.progress_popup, text=message).pack(pady=10)
         self.progress_bar = ctk.CTkProgressBar(self.progress_popup, mode="indeterminate")
@@ -148,10 +157,17 @@ class CTOSReportApp(ctk.CTk):
     def show_ctos_report(self):
         self.ctos_report_view.pack(fill="both", expand=True)
         self.xml_format_view.pack_forget()
+        self.ctos_summary_view.pack_forget()
 
     def show_xml_format(self):
         self.xml_format_view.pack(fill="both", expand=True)
         self.ctos_report_view.pack_forget()
+        self.ctos_summary_view.pack_forget()
+        
+    def show_ctos_summary(self):
+        self.ctos_summary_view.pack(fill="both", expand=True)
+        self.ctos_report_view.pack_forget()
+        self.xml_format_view.pack_forget()
 
 class CTOSReportView(ctk.CTkFrame):
     def __init__(self, parent, app):
@@ -163,6 +179,9 @@ class CTOSReportView(ctk.CTkFrame):
         self.current_index = 0  # Track the current NU_PTL index
         self.filtered_data = None  # Store filtered data for navigation
         style = ttk.Style()
+        self.tabview = CTkTabview(self)
+        self.tabview.pack(fill="both", expand=True)
+        self.treeviews = {}
         style.configure("Treeview", rowheight=25, font=("Segoe UI", 10))
         style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
         style.map("Treeview", background=[('selected', '#6fa8dc')])
@@ -213,6 +232,7 @@ class CTOSReportView(ctk.CTkFrame):
         )
         self.account_combobox.grid(row=0, column=1, padx=10, pady=5)
         self.account_combobox.bind("<<ComboboxSelected>>", self.display_data)
+        self.account_combobox.bind("<KeyRelease>", self.on_account_typing)
 
         # Next Button
         self.next_button = ctk.CTkButton(self.control_frame, text="Next", command=self.go_to_next)
@@ -238,6 +258,20 @@ class CTOSReportView(ctk.CTkFrame):
         # Create a refresh button
         refresh_button = ctk.CTkButton(self, text="Refresh", command=self.refresh_data)
         refresh_button.pack(pady=10)
+    
+    def on_account_typing(self, event):
+        typed = self.account_var.get().lower()
+        
+        # Filter values that contain the typed substring
+        filtered = [acct for acct in self.all_accounts if typed in acct.lower()]
+        
+        # Update combobox values dynamically
+        self.account_combobox['values'] = filtered
+
+        # Optionally, show dropdown
+        if filtered:
+            self.account_combobox.event_generate('<Down>')
+
         
     def refresh_data(self):
         xml_format_view = self.app.xml_format_view
@@ -272,39 +306,80 @@ class CTOSReportView(ctk.CTkFrame):
                 self.current_index = self.all_accounts.index(selected_account)
             else:
                 self.current_index = 0
-            current_row = self.filtered_data.iloc[self.current_index]
 
-            # Get the NU_PTL value and set it in the search entry
+            current_row = self.filtered_data.iloc[self.current_index]
             nu_ptl = current_row.get("NU_PTL", "")
             self.search_var.set(str(nu_ptl))
 
-            # Parse the XML data in the "XML" column
             xml_data = current_row.get("XML", "")
             if pd.isna(xml_data) or not xml_data.strip():
-                xml_data = "<No XML Data>"
+                return
 
-            # Clear the Treeview
-            self.tree.delete(*self.tree.get_children())
-
-            # Parse the XML and display it in the Treeview
             try:
                 dom = xml.dom.minidom.parseString(xml_data)
                 root = dom.documentElement
 
-                # Set up columns in the Treeview
-                self.tree["columns"] = ["Field", "Value"]
-                self.tree.heading("#0", text="")  # Hide the default column
-                self.tree.column("#0", width=0, stretch=False)
-                self.tree.heading("Field", text="Field")
-                self.tree.heading("Value", text="Value")
-                self.tree.column("Field", anchor="center", width=300)
-                self.tree.column("Value", anchor="center", width=400)
+                # Clear all tabs
+                for tab_name in self.tabview.tabs():
+                    self.tabview.delete(tab_name)
+                self.treeviews.clear()
 
-                # Insert rows into the Treeview
-                self.parse_xml_to_treeview(root, "")
+                # Add "Header & Summary" tab
+                self.tabview.add("Header & Summary")
+                header_frame = self.tabview.tab("Header & Summary")
+                header_tree = self.create_treeview(header_frame)
+                self.treeviews["Header & Summary"] = header_tree
+
+                # Parse <header>
+                for header in root.getElementsByTagName("header"):
+                    for node in header.childNodes:
+                        if node.nodeType == node.ELEMENT_NODE:
+                            field = node.tagName
+                            value = node.firstChild.nodeValue.strip() if node.firstChild else "-"
+                            header_tree.insert("", "end", values=[field, value])
+
+                # Parse <summary>
+                for summary in root.getElementsByTagName("summary"):
+                    for enq_sum in summary.getElementsByTagName("enq_sum"):
+                        for fs in enq_sum.getElementsByTagName("field_sum"):
+                            field = fs.getAttribute("name")
+                            value = fs.firstChild.nodeValue.strip() if fs.firstChild else "-"
+                            header_tree.insert("", "end", values=[field, value])
+
+                # Add section tabs A–E
+                for section in root.getElementsByTagName("section"):
+                    sec_id = section.getAttribute("id").strip().upper()
+                    if sec_id not in ["A", "B", "C", "D", "E"]:
+                        continue
+                    section_name = f"Section {sec_id}"
+                    self.tabview.add(section_name)
+                    sec_frame = self.tabview.tab(section_name)
+                    sec_tree = self.create_treeview(sec_frame)
+                    self.treeviews[section_name] = sec_tree
+
+                    for record in section.getElementsByTagName("record"):
+                        seq = record.getAttribute("seq")
+                        sec_tree.insert("", "end", values=["Record", seq])
+                        for data in record.getElementsByTagName("data"):
+                            caption = data.getAttribute("caption").strip()
+                            name = data.getAttribute("name").strip()
+                            field = caption if caption else name
+                            value = data.firstChild.nodeValue.strip() if data.firstChild else "-"
+                            sec_tree.insert("", "end", values=[field, value])
+
             except Exception as e:
-                self.tree.insert("", "end", values=["Error", str(e)])
+                self.tabview.add("Error")
+                error_tree = self.create_treeview(self.tabview.tab("Error"))
+                error_tree.insert("", "end", values=["Error", str(e)])
 
+    def create_treeview(self, parent):
+        tree = ttk.Treeview(parent, columns=("Field", "Value"), show="headings")
+        tree.heading("Field", text="Field")
+        tree.heading("Value", text="Value")
+        tree.column("Field", anchor="w", width=300)
+        tree.column("Value", anchor="w", width=600)
+        tree.pack(fill="both", expand=True)
+        return tree
 
     def parse_xml_to_treeview(self, node, parent_path=""):
         for child in node.childNodes:
@@ -412,8 +487,20 @@ class CTOSReportView(ctk.CTkFrame):
         self.progress_bar.set(progress)
         self.status_label.configure(text=f"Processing {index} of {total}")
         # Removed: self.popup.update()  # <-- Avoid explicit update call here
-
+        
     def convert_to_excel_thread(self):
+        from collections import defaultdict
+
+        # Your fixed columns per sheet
+        section_columns = {
+            "Header&Summary": ["NU_PTL", "user", "company", "account", "tel", "fax", "enq_date", "enq_time", "enq_status", "IC_LCNO", "NIC_BRNO", "NAME", "ALIAS", "STAT", "REF"],
+            "Section-A": ["NU_PTL", "Record_ID", "ICNO", "MATCH", "NEWIC", "MATCH1", "NAME", "MATCH2", "ADDR", "ADDR1", "REMARK"],
+            "Section-B": ["NU_PTL", "Record_ID", "CODE", "NAME", "MATCH", "ALIAS", "IC_LCNO", "NIC_BRNO", "REF", "CONUM", "CONAME", "REMARK", "REMARK2", "REMARK3", "AMOUNT", "ENTRY"],
+            "Section-C": ["NU_PTL", "Record_ID", "EXTRANAME", "EXTRALOCAL", "EXTRALOCALA", "OBJECT", "INCORPRATION", "COMPANY PAIDUP", "SEARCH DATE", "EXTRALASTDOC", "NAME", "IC_LCNO", "NIC_BRNO", "STATUS", "SHARES", "REAMARK", "APPOINTED", "RESIGNED", "ADDRESS"],
+            "Section-D": ["NU_PTL", "Record_ID", "ZTITLE", "ZSPECIAL", "NAME", "MATCH", "ALIAS", "I/C NO", "NEW IC", "REMARK", "ADDRESS", "FIRM", "PLAINTIFF", "CASE NO", "ZCOURT", "ACTION DATE", "ZNTPAP", "HEARING DATE", "AMOUNT", "SOLCTR", "LAWADD1", "TEL", "LAWADD2", "REF", "LAWADD3", "PLAINTIFF CONTACT", "CEDCONADD1", "CEDCONADD2", "CEDCONADD3"],
+            "Section-E": ["NU_PTL", "Record_ID", "REFEREE", "INCORPORATION DATE", "NATURE OF BUSINESS", "ADDRESS", "TR_URL"]
+        }
+
         try:
             if self.filtered_data is None or self.filtered_data.empty:
                 self.after(0, self.update_status, "No data to convert.")
@@ -428,16 +515,25 @@ class CTOSReportView(ctk.CTkFrame):
                 self.after(0, self.update_status, "Save cancelled.")
                 return
 
-            converted_rows = []
-            total = len(self.filtered_data)
-            self.after(0, self.update_status, "Converting...")
+            self.after(0, self.update_status, "Extracting data...")
             self.after(0, lambda: self.error_textbox.delete("1.0", "end"))
             self.after(0, self.progress_bar.set, 0)
-            
+
+            # Initialize data container
+            sheets_data = {
+                "Header&Summary": [],
+                "Section-A": [],
+                "Section-B": [],
+                "Section-C": [],
+                "Section-D": [],
+                "Section-E": []
+            }
+
+            total = len(self.filtered_data)
 
             for index, (_, row) in enumerate(self.filtered_data.iterrows()):
                 if not self.is_converting:
-                    break  # Stop if conversion canceled or UI closed
+                    break
 
                 nu_ptl = row.get("NU_PTL", f"Row{index}")
                 xml_data = clean_malformed_xml(row.get("XML", ""))
@@ -447,27 +543,68 @@ class CTOSReportView(ctk.CTkFrame):
 
                 try:
                     dom = xml.dom.minidom.parseString(xml_data)
-                    row_data = {"NU_PTL": nu_ptl}
+                    root = dom.documentElement
 
-                    def extract_fields(node):
-                        for child in node.childNodes:
-                            if child.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
-                                tag = child.tagName
-                                if tag == "field_sum" and child.hasAttribute("name"):
-                                    field = child.getAttribute("name").strip()
-                                    value = (child.firstChild.nodeValue.strip()
-                                            if child.firstChild and child.firstChild.nodeValue else " - ")
-                                    row_data[field] = value
-                                elif tag == "data":
-                                    caption = child.getAttribute("caption") or child.getAttribute("name")
-                                    field = caption.strip() if caption else "Unnamed_Field"
-                                    value = (child.firstChild.nodeValue.strip()
-                                            if child.firstChild and child.firstChild.nodeValue else " - ")
-                                    row_data[field] = value
-                                extract_fields(child)
+                    # Header&Summary
+                    # Collect header info into a dict with all keys preset to ""
+                    header_record = {col: "" for col in section_columns["Header&Summary"]}
+                    header_record["NU_PTL"] = nu_ptl
 
-                    extract_fields(dom.documentElement)
-                    converted_rows.append(row_data)
+                    for header in root.getElementsByTagName("header"):
+                        for node in header.childNodes:
+                            if node.nodeType == node.ELEMENT_NODE:
+                                tag = node.tagName.strip()
+                                if tag in section_columns["Header&Summary"]:
+                                    header_record[tag] = node.firstChild.nodeValue.strip() if node.firstChild else "-"
+                    # Collect summary/enq_sum fields (field_sum nodes)
+                    for summary in root.getElementsByTagName("summary"):
+                        for enq_sum in summary.getElementsByTagName("enq_sum"):
+                            for fs in enq_sum.getElementsByTagName("field_sum"):
+                                if fs.hasAttribute("name"):
+                                    field = fs.getAttribute("name").strip()
+                                    if field in section_columns["Header&Summary"]:
+                                        value = fs.firstChild.nodeValue.strip() if fs.firstChild else "-"
+                                        header_record[field] = value
+                    sheets_data["Header&Summary"].append(header_record)
+
+                    # Sections A-E
+                    for section in root.getElementsByTagName("section"):
+                        section_id = section.getAttribute("id").strip()
+                        section_key = f"Section-{section_id}"
+
+                        if section_key not in sheets_data:
+                            continue
+
+                        for rec in section.getElementsByTagName("record"):
+                            record = {col: "" for col in section_columns[section_key]}
+                            record["NU_PTL"] = nu_ptl
+                            record_id = rec.getAttribute("seq").strip() if rec.hasAttribute("seq") else ""
+                            record["Record_ID"] = record_id
+
+                            for data in rec.getElementsByTagName("data"):
+                                name = data.getAttribute("name").strip().upper()
+                                caption = data.getAttribute("caption").strip().upper()
+
+                                possible_keys = []
+                                if caption:
+                                    possible_keys.append(caption)
+                                if name:
+                                    possible_keys.append(name)
+
+                                matched_field = None
+                                for key in possible_keys:
+                                    for expected in section_columns.get(section_key, []):
+                                        if expected.upper() == key:
+                                            matched_field = expected
+                                            break
+                                    if matched_field:
+                                        break
+
+                                if matched_field:
+                                    value = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                    record[matched_field] = value
+
+                            sheets_data[section_key].append(record)
 
                 except Exception as e:
                     msg = f"Error parsing XML for NU_PTL {nu_ptl}: {str(e)}"
@@ -478,39 +615,25 @@ class CTOSReportView(ctk.CTkFrame):
                     progress = (index + 1) / total
                     self.after(0, self.update_progress, progress, index + 1, total)
 
-            if not converted_rows:
-                self.after(0, self.update_status, "No valid XML data to export.")
-                return
+            # Export to Excel
+            self.after(0, self.update_status, "Writing to Excel...")
 
-            df = pd.DataFrame(converted_rows)
-            df.columns = df.columns.map(lambda x: str(x).strip().replace("\x00", "")[:255])
-            df = df.applymap(lambda x: str(x).strip().replace("\x00", "") if pd.notnull(x) else "")
-            df.reset_index(drop=True, inplace=True)
-
-
-            max_rows_per_sheet = 100000
             with pd.ExcelWriter(save_path, engine="openpyxl") as writer:
-                total_rows = df.shape[0]
-                sheets_needed = (total_rows // max_rows_per_sheet) + 1
-
-                for i in range(sheets_needed):
-                    start_row = i * max_rows_per_sheet
-                    end_row = start_row + max_rows_per_sheet
-                    sheet_df = df.iloc[start_row:end_row]
-        
-                    if not sheet_df.empty:
-                        sheet_name = f"part_{i + 1}"
-                        sheet_df.to_excel(writer, sheet_name=sheet_name)
-
+                for sheet_name, records in sheets_data.items():
+                    if records:
+                        df = pd.DataFrame(records)
+                        # Ensure columns are ordered exactly as defined
+                        df = df.reindex(columns=section_columns[sheet_name])
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
 
             self.after(0, self.update_status, "Export successful!")
             self.after(0, self.destroy_popup)
-
 
         except Exception as e:
             self.after(0, self.update_status, f"Error: {str(e)}")
             self.after(0, self.append_error, f"Fatal error: {str(e)}")
             self.after(0, self.destroy_popup)
+
 
     def append_error(self, msg):
         if hasattr(self, "error_textbox"):
@@ -532,10 +655,12 @@ class CTOSReportView(ctk.CTkFrame):
         self.popup.title("Export Progress")
         self.popup.geometry("600x250")
         self.popup.grab_set()  # Makes the popup modal
+        self.popup.attributes("-topmost", True)
 
         self.progress_bar = ctk.CTkProgressBar(master=self.popup)
         self.progress_bar.pack(pady=10, fill='x', padx=20)
         self.progress_bar.set(0)
+ 
 
         self.status_label = ctk.CTkLabel(master=self.popup, text="Starting export...")
         self.status_label.pack(pady=5)
@@ -597,6 +722,7 @@ class XMLFormatView(ctk.CTkFrame):
         )
         self.account_combobox.grid(row=0, column=1, padx=10, pady=5)
         self.account_combobox.bind("<<ComboboxSelected>>", self.display_xml_data)
+        self.account_combobox.bind("<KeyRelease>", self.on_account_typing)
 
         # Next Button
         self.next_button = ctk.CTkButton(control_frame, text="Next", command=self.go_to_next)
@@ -609,6 +735,19 @@ class XMLFormatView(ctk.CTkFrame):
         # Refresh Button
         self.refresh_button = ctk.CTkButton(self, text="Refresh Data", command=self.refresh_data)
         self.refresh_button.pack(pady=10)
+    
+    def on_account_typing(self, event):
+        typed = self.account_var.get().lower()
+        
+        # Filter values that contain the typed substring
+        filtered = [acct for acct in self.all_accounts if typed in acct.lower()]
+        
+        # Update combobox values dynamically
+        self.account_combobox['values'] = filtered
+
+        # Optionally, show dropdown
+        if filtered:
+            self.account_combobox.event_generate('<Down>')
 
     def refresh_data(self):
         # Get the shared data from the main app
@@ -675,6 +814,83 @@ class XMLFormatView(ctk.CTkFrame):
         self.prev_button.configure(state="normal" if self.current_index > 0 else "disabled")
         self.next_button.configure(state="normal" if self.current_index < len(self.filtered_data) - 1 else "disabled")
 
+
+class CTOSSummaryView(ctk.CTkFrame):
+    def __init__(self, parent, app):
+        super().__init__(parent)
+        self.app = app
+        self.headers = ["", "Total"]
+        self.sections = ["A", "B", "C", "D", "E"]
+        self.rows = [""] + self.sections  # Blank (Total), then A–E
+
+        self.data = []  # List of records with 'NU_PTL' and 'Section'
+        self.create_main_layout()
+
+    def create_main_layout(self):
+        self.header_label = ctk.CTkLabel(self, text="CTOS Summary", font=ctk.CTkFont(size=16, weight="bold"))
+        self.header_label.pack(pady=(10, 5))
+
+        self.control_frame = ctk.CTkFrame(self)
+        self.control_frame.pack(fill="x", padx=10, pady=5)
+
+        self.table_frame = ctk.CTkFrame(self)
+        self.table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Example button to trigger summary
+        self.refresh_button = ctk.CTkButton(self.control_frame, text="Refresh Summary", command=self.refresh_summary)
+        self.refresh_button.pack(side="left")
+
+        self.create_summary_table({})  # Initial blank table
+
+    def refresh_summary(self):
+        records = self.app.all_parsed_data  # Use your actual parsed data
+        summary = self.calculate_summary(records)
+        self.create_summary_table(summary)
+
+    def calculate_summary(self, records):
+        unique_nu_ptls = set()
+        section_record_count = defaultdict(int)  # section => total record count
+
+        for record in records:
+            nu_ptl = record.get("NU_PTL")
+            sections = record.get("Sections", {})
+            unique_nu_ptls.add(nu_ptl)
+
+            for sec_id in self.sections:
+                records_in_section = sections.get(sec_id, [])
+                section_record_count[sec_id] += len(records_in_section)
+
+        summary = {
+            "": {"Total": len(unique_nu_ptls)}
+        }
+
+        for sec in self.sections:
+            summary[sec] = {"Total": section_record_count[sec]}
+
+        return summary
+
+
+    def create_summary_table(self, summary):
+        for widget in self.table_frame.winfo_children():
+            widget.destroy()
+
+        for col, header in enumerate(self.headers):
+            label = ctk.CTkLabel(self.table_frame, text=header, font=ctk.CTkFont(weight="bold"))
+            label.grid(row=0, column=col, padx=5, pady=5, sticky="nsew")
+
+        for row_idx, row_label in enumerate(self.rows):
+            for col_idx, header in enumerate(self.headers):
+                if col_idx == 0:
+                    text = "Total" if row_label == "" else row_label
+                else:
+                    text = summary.get(row_label, {}).get(header, "")
+                label = ctk.CTkLabel(self.table_frame, text=text)
+                label.grid(row=row_idx + 1, column=col_idx, padx=5, pady=3, sticky="nsew")
+
+        for i in range(len(self.headers)):
+            self.table_frame.grid_columnconfigure(i, weight=1)
+
+        
 
 if __name__ == "__main__":
     app = CTOSReportApp()
