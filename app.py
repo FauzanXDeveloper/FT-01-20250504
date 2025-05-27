@@ -1,7 +1,11 @@
 import threading
 import time
+import subprocess
+import sys
+import os
 import math
 import xlsxwriter
+import customtkinter
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
@@ -16,7 +20,41 @@ from xml.sax.saxutils import escape
 from xml.dom import minidom
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
+import psutil
+import win32gui
+import win32con
 
+def is_integrate_running():
+        """
+        Check if a process running integrate.py exists.
+        Returns the process if found, otherwise None.
+        """
+        for proc in psutil.process_iter(attrs=["cmdline"]):
+            try:
+                cmdline = proc.info["cmdline"]
+                if cmdline and "integrate.py" in " ".join(cmdline):
+                    return proc
+            except Exception:
+                continue
+        return None
+
+def bring_integrate_to_front():
+    """
+    Brings the window with title containing 'Report Launcher' (adjust if needed)
+    to the front.
+    """
+    def enum_callback(hwnd, results):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if "Report Launcher" in title:
+                results.append(hwnd)
+    hwnds = []
+    win32gui.EnumWindows(enum_callback, hwnds)
+    if hwnds:
+        h = hwnds[0]
+        # Restore the window (if minimized) and bring to foreground
+        win32gui.ShowWindow(h, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(h)
 
 def clean_malformed_xml(xml_str):
    
@@ -41,67 +79,204 @@ def clean_malformed_xml(xml_str):
         except Exception:
             # Fallback
             return f"<root>{escape(xml_str)}</root>"
-
+        
 class CTOSReportApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.iconbitmap("ctos.ico")  # Set the application icon
         self.title("CTOS Report Generator")
         self.geometry("1800x900")
+        
+        self.current_theme = "system" 
+        
+        customtkinter.set_default_color_theme("Themes/patina.json")
+        
+        # Shared data (Excel, parsed XML, etc.)
+        self.shared_data = None
 
-        # Shared data for all views
-        self.shared_data = None  # This will hold the imported Excel data
+        # Sidebar settings
+        self.SIDEBAR_EXPANDED_WIDTH = 200
+        self.SIDEBAR_SHRUNK_WIDTH = 60
+        self.sidebar_expanded = True
 
-        # Sidebar
-        self.sidebar = ctk.CTkFrame(self, width=200, corner_radius=0)
-        self.sidebar.pack(side="left", fill="y")
+        # Sidebar container with transparent background
+        self.sidebar_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.sidebar_container.pack(side="left", fill="y")
 
-        # Import Excel Button
+        # Sidebar frame with a subtle background color and rounded corners
+        self.sidebar = ctk.CTkFrame(self.sidebar_container, width=self.SIDEBAR_EXPANDED_WIDTH, corner_radius=8)
+        self.sidebar.pack(side="left", fill="y", padx=5, pady=5)
+        self.sidebar.pack_propagate(False)
+
+        # Hamburger Button (always visible)
+        hamburger_img = ctk.CTkImage(Image.open("hamburger.png"), size=(24, 24))
+        self.hamburger_btn = ctk.CTkButton(
+            self.sidebar,
+            text="",
+            image=hamburger_img,
+            width=40,
+            height=40,
+            fg_color="transparent",
+            hover_color="#555",
+            command=self.toggle_sidebar
+        )
+        self.hamburger_btn.pack(pady=(10, 0), padx=10, anchor="nw")
+
+        # Sidebar buttons with improved spacing & bigger size
+        button_font = ctk.CTkFont(family="Segoe UI", size=16, weight="bold")  # increased font size
         self.import_button = ctk.CTkButton(
-            self.sidebar, text="Import Excel File", command=self.import_excel
+            self.sidebar,
+            text="📂 Import Excel",
+            command=self.import_excel,
+            font=button_font,
+            width=150,      # increased width
+            height=50       # increased height
         )
         self.import_button.pack(pady=20, padx=20)
-
-        # XML Format Button
+        
         self.xml_format_button = ctk.CTkButton(
-            self.sidebar, text="XML Format", command=self.show_xml_format
+            self.sidebar,
+            text="XML Format",
+            command=self.show_xml_format,
+            font=button_font,
+            width=150,
+            height=50
         )
         self.xml_format_button.pack(pady=20, padx=20)
-
-        # CTOS Report Button
+        
         self.ctos_report_button = ctk.CTkButton(
-            self.sidebar, text="CTOS Report", command=self.show_ctos_report
+            self.sidebar,
+            text="CTOS Report",
+            command=self.show_ctos_report,
+            font=button_font,
+            width=150,
+            height=50
         )
         self.ctos_report_button.pack(pady=20, padx=20)
         
-        self.ctos_summary_butoon = ctk.CTkButton(
-            self.sidebar, text="CTOS Summary", command=self.show_ctos_summary
+        self.ctos_summary_button = ctk.CTkButton(
+            self.sidebar,
+            text="CTOS Summary",
+            command=self.show_ctos_summary,
+            font=button_font,
+            width=150,
+            height=50
         )
-        self.ctos_summary_butoon.pack(pady=20, padx=20)
+        self.ctos_summary_button.pack(pady=20, padx=20)
+        
+        self.main_app_button = ctk.CTkButton(
+            self.sidebar,
+            text="🔙 Back to Main",
+            command=self.show_main_app,
+            font=button_font,
+            width=150,
+            height=50
+        )
+        self.main_app_button.pack(pady=20, padx=20)
+        
+        self.sidebar_buttons = [
+            self.import_button,
+            self.xml_format_button,
+            self.ctos_report_button,
+            self.ctos_summary_button,
+            self.main_app_button
+        ]
+        
+        
+        try:
+            self.dark_icon = ctk.CTkImage(Image.open("dark_mode_icon.png"), size=(24, 24))
+            self.system_icon = ctk.CTkImage(Image.open("light_mode_icon.png"), size=(24, 24))
+        except Exception as e:
+            print(f"Error loading icons: {e}")
+            self.dark_icon = None
+            self.system_icon = None
 
-        # Add space between sidebar and main content
-        self.sidebar_spacer = ctk.CTkFrame(self, width=20, fg_color="transparent")
+        # Default: if current mode is System, we show dark_icon (clicking will set dark)
+        self.mode_toggle_btn = ctk.CTkButton(
+            self.sidebar,
+            text="",
+            image=self.dark_icon,
+            width=40,
+            height=40,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.toggle_mode
+        )
+        self.mode_toggle_btn.pack(side="bottom", pady=15)
+     
+        # Add a small sidebar spacer
+        self.sidebar_spacer = ctk.CTkFrame(self, width=5, fg_color="transparent")
         self.sidebar_spacer.pack(side="left", fill="y")
 
-        # Main Content Area
-        self.main_frame = ctk.CTkFrame(self, corner_radius=0)
-        self.main_frame.pack(side="right", fill="both", expand=True)
+        # Main Content Area with slight padding and no corner radius
+        self.main_frame = ctk.CTkFrame(self, corner_radius=8)
+        self.main_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
-        # Initialize Views
+        # Initialize Views (adjusted margins for better spacing)
         self.xml_format_view = XMLFormatView(self.main_frame, self)
         self.ctos_report_view = CTOSReportView(self.main_frame, self)
         self.ctos_summary_view = CTOSSummaryView(self.main_frame, self)
-
-        # Show Default View
+        # Show default view here; use pack_forget on hidden ones
         self.show_xml_format()
         
+    
+    def toggle_sidebar(self):
+        if self.sidebar_expanded:
+            for btn in self.sidebar_buttons:
+                btn.pack_forget()
+            # Also hide mode toggle? Optionally keep it visible.
+            self.sidebar.configure(width=self.SIDEBAR_SHRUNK_WIDTH)
+            self.sidebar_expanded = False
+        else:
+            for btn in self.sidebar_buttons:
+                btn.pack(pady=15, padx=20)
+            self.sidebar.configure(width=self.SIDEBAR_EXPANDED_WIDTH)
+            self.sidebar_expanded = True
+    
+    def toggle_mode(self):
+        customtkinter.set_default_color_theme("Themes/patina.json")
+        if self.current_theme == "dark":
+            self.current_theme = "light"
+            ctk.set_appearance_mode("light")
+            if self.system_icon is not None:
+                self.mode_toggle_btn.configure(image=self.system_icon)
+            else:
+                self.mode_toggle_btn.configure(text="Light")
+        else:
+            self.current_theme = "dark"
+            ctk.set_appearance_mode("dark")
+            if self.dark_icon is not None:
+                self.mode_toggle_btn.configure(image=self.dark_icon)
+            else:
+                self.mode_toggle_btn.configure(text="Dark")
+        self.update_idletasks()
+        self.update_treeview_style()
+        
+    def update_treeview_style(self):
+        style = ttk.Style()
+        # Set default values for Treeview styling (ignoring the theme from patina.json)
+        style.configure("Treeview",
+                        rowheight=28,
+                        font=("Segoe UI", 11),
+                        background="#FFFFFF",      # White background for data
+                        foreground="#000000",      # Black text for data
+                        fieldbackground="#FFFFFF") # White background in cells
+        style.configure("Treeview.Heading",
+                        font=("Segoe UI", 11, "bold"),
+                        background="#F0F0F0",      # Light gray header background
+                        foreground="#000000")      # Black header text
+        style.map("Treeview",
+                background=[("selected", "#A67C5F")],
+                foreground=[("selected", "#000000")])
+                
+    
     def show_progress_popup(self, title="Processing...", message="Please wait..."):
         self.progress_popup = ctk.CTkToplevel(self)
         self.progress_popup.title(title)
         self.progress_popup.geometry("300x100")
         self.progress_popup.resizable(False, False)
-        self.progress_popup.grab_set()  # Block interaction with main window
-        self.progress_popup.attributes("-topmost", True)  # ✅ Always on top
-
+        self.progress_popup.grab_set()
+        self.progress_popup.attributes("-topmost", True)
         ctk.CTkLabel(self.progress_popup, text=message).pack(pady=10)
         self.progress_bar = ctk.CTkProgressBar(self.progress_popup, mode="indeterminate")
         self.progress_bar.pack(padx=20, pady=10, fill="x")
@@ -113,46 +288,37 @@ class CTOSReportApp(ctk.CTk):
             self.progress_popup.destroy()
 
     def import_excel(self):
+        file_path = filedialog.askopenfilename(
+            title="Select Excel File",
+            filetypes=[("Excel Files", "*.xlsx *.xls")]
+        )
+        if not file_path:
+            return
+        self.show_progress_popup(title="Importing Excel", message="Cleaning XML records...")
         def import_thread():
             try:
-                file_path = filedialog.askopenfilename(
-                    title="Select Excel File",
-                    filetypes=[("Excel Files", "*.xlsx *.xls")]
-                )
-                if not file_path:
-                    self.after(0, self.destroy_progress_popup)
-                    return
-
                 df = pd.read_excel(file_path)
-                df.columns = df.columns.str.strip().str.upper()  # Normalize column names
-
+                df.columns = df.columns.str.strip().str.upper()
                 if "NU_PTL" not in df.columns or "XML" not in df.columns:
                     self.after(0, lambda: messagebox.showerror("Error", "Excel must contain columns: NU_PTL and XML"))
                     self.after(0, self.destroy_progress_popup)
                     return
-
                 cleaned_xml_dict = {}
                 for _, row in df.iterrows():
                     nu_ptl = str(row["NU_PTL"])
                     raw_xml = row["XML"]
                     cleaned_xml = clean_malformed_xml(raw_xml)
                     cleaned_xml_dict[nu_ptl] = cleaned_xml
-
                 def update_data():
                     self.shared_data = df
                     self.xml_format_view.xml_data = cleaned_xml_dict
                     self.destroy_progress_popup()
-                    messagebox.showinfo("Success", "Excel file imported and XML cleaned successfully!")
-
+                    messagebox.showinfo("Success", "Excel imported and XML cleaned successfully!")
                 self.after(0, update_data)
-
             except Exception as e:
                 self.after(0, self.destroy_progress_popup)
                 self.after(0, lambda: messagebox.showerror("Error", f"Error importing Excel file: {e}"))
-
-        self.show_progress_popup(title="Importing Excel", message="Cleaning XML records...")
         threading.Thread(target=import_thread, daemon=True).start()
-
 
     def show_ctos_report(self):
         self.ctos_report_view.pack(fill="both", expand=True)
@@ -169,6 +335,16 @@ class CTOSReportApp(ctk.CTk):
         self.ctos_report_view.pack_forget()
         self.xml_format_view.pack_forget()
 
+
+    def show_main_app(self):
+        proc = is_integrate_running()
+        script_path = os.path.join(os.getcwd(), "integrate.py")
+        if proc is None:
+            subprocess.Popen([sys.executable, script_path])
+        else:
+            bring_integrate_to_front()
+        
+        
 class CTOSReportView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent)
@@ -178,15 +354,8 @@ class CTOSReportView(ctk.CTkFrame):
         self.all_accounts = []
         self.current_index = 0  # Track the current NU_PTL index
         self.filtered_data = None  # Store filtered data for navigation
-        style = ttk.Style()
-        self.tabview = CTkTabview(self)
-        self.tabview.pack(fill="both", expand=True)
-        self.treeviews = {}
-        style.configure("Treeview", rowheight=25, font=("Segoe UI", 10))
-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
-        style.map("Treeview", background=[('selected', '#6fa8dc')])
-
-
+        
+    
         # --- Header Frame ---
         header_frame = ctk.CTkFrame(self)
         header_frame.pack(fill="x", pady=10)
@@ -220,9 +389,20 @@ class CTOSReportView(ctk.CTkFrame):
         self.control_frame.grid_columnconfigure(1, weight=0)  # Buttons and Combobox
         self.control_frame.grid_columnconfigure(2, weight=1)  # Right spacer
 
+        # Load arrow icons
+        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+        
         # Previous Button
-        self.prev_button = ctk.CTkButton(self.control_frame, text="Previous", command=self.go_to_previous)
-        self.prev_button.grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        self.prev_btn = ctk.CTkButton(
+            self.control_frame,
+            text="",
+            image=left_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.go_to_previous
+        )
+        self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
 
         # ttk Combobox
         self.ttk_style = ttk.Style()
@@ -234,21 +414,44 @@ class CTOSReportView(ctk.CTkFrame):
         self.account_combobox.bind("<<ComboboxSelected>>", self.display_data)
         self.account_combobox.bind("<KeyRelease>", self.on_account_typing)
 
-        # Next Button
-        self.next_button = ctk.CTkButton(self.control_frame, text="Next", command=self.go_to_next)
-        self.next_button.grid(row=0, column=2, padx=10, pady=5, sticky="w")
+        self.next_btn = ctk.CTkButton(
+            self.control_frame,
+            text="",
+            image=right_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.go_to_next
+        )
+        self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
 
+        self.export_icon = ctk.CTkImage(Image.open("export.png"), size=(24, 24))
+        
         # Convert to Excel Button
-        self.convert_button = ctk.CTkButton(self.control_frame, text="Convert to Excel", command=self.convert_to_excel)
+        self.convert_button = ctk.CTkButton(self.control_frame, text="Convert to Excel", image=self.export_icon,command=self.convert_to_excel, )
         self.convert_button.grid(row=0, column=4, padx=5)
         
 
-        # Treeview for displaying parsed XML data
+        # --- Treeview for displaying parsed XML data ---
         self.tree_frame = ctk.CTkFrame(self)
         self.tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         self.tree = ttk.Treeview(self.tree_frame, show="headings")
-        self.tree.pack(fill="both", expand=True, side="left")
+        self.tree.pack(fill="both", expand=True, side="left", padx=5, pady=5)
+       
+        # Set up two columns with customized widths and centered text.
+        self.tree["columns"] = ["Field", "Value"]
+        self.tree.heading("Field", text="Field")
+        self.tree.heading("Value", text="Value")
+        self.tree.column("Field", anchor="center", width=300)
+        self.tree.column("Value", anchor="center", width=400)
+
+        # Add context menu for copying
+        self.tree.bind("<Button-3>", self.show_context_menu)
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Copy Row", command=self.copy_row)
+        self.context_menu.add_command(label="Copy Cell", command=self.copy_cell)
+        self._right_click_row = None
+        self._right_click_col = None
 
         # Add a scrollbar
         self.scrollbar = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
@@ -259,202 +462,153 @@ class CTOSReportView(ctk.CTkFrame):
         refresh_button = ctk.CTkButton(self, text="Refresh", command=self.refresh_data)
         refresh_button.pack(pady=10)
     
+        
     def on_account_typing(self, event):
         typed = self.account_var.get().lower()
-        
-        # Filter values that contain the typed substring
         filtered = [acct for acct in self.all_accounts if typed in acct.lower()]
-        
-        # Update combobox values dynamically
         self.account_combobox['values'] = filtered
 
-        # Optionally, show dropdown
-        if filtered:
-            self.account_combobox.event_generate('<Down>')
-
-        
     def refresh_data(self):
         xml_format_view = self.app.xml_format_view
-
-        # Ensure there is XML data to process
         if not xml_format_view.xml_data:
             return
-
-        # Clean the XML data
         cleaned_data = {
             key: clean_malformed_xml(value)
             for key, value in xml_format_view.xml_data.items()
         }
-
-        # Rebuild filtered_data DataFrame from cleaned XML
         self.filtered_data = pd.DataFrame.from_dict(cleaned_data, orient="index", columns=["XML"])
         self.filtered_data.reset_index(inplace=True)
         self.filtered_data.rename(columns={"index": "NU_PTL"}, inplace=True)
-
-        # Populate account list and update combobox
         self.all_accounts = self.filtered_data["NU_PTL"].tolist()
-        self.account_combobox['values'] = self.all_accounts  # <-- Add this line
+        self.account_combobox['values'] = self.all_accounts
         if self.all_accounts:
-            self.account_combobox.current(self.current_index)   
-
+            self.account_combobox.current(self.current_index)
         self.display_data()
 
+    def show_context_menu(self, event):
+        # Identify row and column under mouse
+        region = self.tree.identify("region", event.x, event.y)
+        if region == "cell":
+            row_id = self.tree.identify_row(event.y)
+            col_id = self.tree.identify_column(event.x)
+            self._right_click_row = row_id
+            self._right_click_col = col_id
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        else:
+            self._right_click_row = None
+            self._right_click_col = None
+
+    def copy_row(self):
+        if self._right_click_row:
+            values = self.tree.item(self._right_click_row, "values")
+            text = "\t".join(str(v) for v in values)
+            self.clipboard_clear()
+            self.clipboard_append(text)
+
+    def copy_cell(self):
+        if self._right_click_row and self._right_click_col:
+            col_index = int(self._right_click_col.replace("#", "")) - 1
+            values = self.tree.item(self._right_click_row, "values")
+            if 0 <= col_index < len(values):
+                text = str(values[col_index])
+                self.clipboard_clear()
+                self.clipboard_append(text)
+                
     def display_data(self, event=None):
-        if self.filtered_data is not None and not self.filtered_data.empty:
-            selected_account = self.account_var.get()
-            if selected_account in self.all_accounts:
-                self.current_index = self.all_accounts.index(selected_account)
-            else:
-                self.current_index = 0
+        selected_account = self.account_var.get()
+        if selected_account in self.all_accounts:
+            self.current_index = self.all_accounts.index(selected_account)
+        else:
+            self.current_index = 0
 
-            current_row = self.filtered_data.iloc[self.current_index]
-            nu_ptl = current_row.get("NU_PTL", "")
-            self.search_var.set(str(nu_ptl))
+        current_row = self.filtered_data.iloc[self.current_index]
+        nu_ptl = current_row.get("NU_PTL", "")
+        self.search_var.set(str(nu_ptl))
+        xml_data = current_row.get("XML", "")
+        if pd.isna(xml_data) or not xml_data.strip():
+            xml_data = "<No XML Data>"
 
-            xml_data = current_row.get("XML", "")
-            if pd.isna(xml_data) or not xml_data.strip():
-                return
+        self.tree.delete(*self.tree.get_children())
+        try:
+            dom = xml.dom.minidom.parseString(xml_data)
+            root = dom.documentElement
+            self.parse_xml_to_treeview(root, "")
+        except Exception as e:
+            self.tree.insert("", "end", values=["Error", str(e)])
 
-            try:
-                dom = xml.dom.minidom.parseString(xml_data)
-                root = dom.documentElement
-
-                # Clear all tabs
-                for tab_name in self.tabview.tabs():
-                    self.tabview.delete(tab_name)
-                self.treeviews.clear()
-
-                # Add "Header & Summary" tab
-                self.tabview.add("Header & Summary")
-                header_frame = self.tabview.tab("Header & Summary")
-                header_tree = self.create_treeview(header_frame)
-                self.treeviews["Header & Summary"] = header_tree
-
-                # Parse <header>
-                for header in root.getElementsByTagName("header"):
-                    for node in header.childNodes:
-                        if node.nodeType == node.ELEMENT_NODE:
-                            field = node.tagName
-                            value = node.firstChild.nodeValue.strip() if node.firstChild else "-"
-                            header_tree.insert("", "end", values=[field, value])
-
-                # Parse <summary>
-                for summary in root.getElementsByTagName("summary"):
-                    for enq_sum in summary.getElementsByTagName("enq_sum"):
-                        for fs in enq_sum.getElementsByTagName("field_sum"):
-                            field = fs.getAttribute("name")
-                            value = fs.firstChild.nodeValue.strip() if fs.firstChild else "-"
-                            header_tree.insert("", "end", values=[field, value])
-
-                # Add section tabs A–E
-                for section in root.getElementsByTagName("section"):
-                    sec_id = section.getAttribute("id").strip().upper()
-                    if sec_id not in ["A", "B", "C", "D", "E"]:
-                        continue
-                    section_name = f"Section {sec_id}"
-                    self.tabview.add(section_name)
-                    sec_frame = self.tabview.tab(section_name)
-                    sec_tree = self.create_treeview(sec_frame)
-                    self.treeviews[section_name] = sec_tree
-
-                    for record in section.getElementsByTagName("record"):
-                        seq = record.getAttribute("seq")
-                        sec_tree.insert("", "end", values=["Record", seq])
-                        for data in record.getElementsByTagName("data"):
-                            caption = data.getAttribute("caption").strip()
-                            name = data.getAttribute("name").strip()
-                            field = caption if caption else name
-                            value = data.firstChild.nodeValue.strip() if data.firstChild else "-"
-                            sec_tree.insert("", "end", values=[field, value])
-
-            except Exception as e:
-                self.tabview.add("Error")
-                error_tree = self.create_treeview(self.tabview.tab("Error"))
-                error_tree.insert("", "end", values=["Error", str(e)])
-
-    def create_treeview(self, parent):
-        tree = ttk.Treeview(parent, columns=("Field", "Value"), show="headings")
-        tree.heading("Field", text="Field")
-        tree.heading("Value", text="Value")
-        tree.column("Field", anchor="w", width=300)
-        tree.column("Value", anchor="w", width=600)
-        tree.pack(fill="both", expand=True)
-        return tree
 
     def parse_xml_to_treeview(self, node, parent_path=""):
+        # If the node is a known wrapper (broken XML outer tags), skip it and process its children
+        if node.nodeType == xml.dom.minidom.Node.ELEMENT_NODE and node.tagName.lower() in ["root", "span"]:
+            for child in node.childNodes:
+                self.parse_xml_to_treeview(child, parent_path)
+            return
+
         for child in node.childNodes:
             if child.nodeType != xml.dom.minidom.Node.ELEMENT_NODE:
                 continue
-
             tag = child.tagName
-
-            # 1. Handle <enq_report id="...">
+            # Example: handle <enq_report>
             if tag == "enq_report" and child.hasAttribute("id"):
                 field = "Report ID"
                 value = child.getAttribute("id")
                 self.tree.insert("", "end", values=[field, value])
                 self.parse_xml_to_treeview(child, field)
                 continue
-
             if tag == "header":
-                for sub in child.childNodes:
-                    if sub.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
-                        sub_tag = sub.tagName
-                        value = sub.firstChild.nodeValue.strip() if sub.firstChild and sub.firstChild.nodeValue else "-"
-                        self.tree.insert("", "end", values=[sub_tag, value])
-                continue
-
-            # 3. Handle <summary> contents
+                # Check if this header is broken (contains a nested <report> element)
+                has_nested_report = any(r for r in child.getElementsByTagName("report"))
+                if has_nested_report:
+                    # Instead of skipping completely, recursively process its children
+                    for sub in child.childNodes:
+                        self.parse_xml_to_treeview(sub, parent_path)
+                    continue
+                else:
+                    # Process a good header normally
+                    for sub in child.childNodes:
+                        if sub.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                            sub_tag = sub.tagName
+                            value = sub.firstChild.nodeValue.strip() if (sub.firstChild and sub.firstChild.nodeValue) else "-"
+                            self.tree.insert("", "end", values=[sub_tag, value])
+                    continue
+            # New summary logic
             if tag == "summary":
                 has_field_sum = False
-
                 for sub in child.getElementsByTagName("enq_sum"):
-                    # Try to find field_sum elements
                     field_sum_nodes = sub.getElementsByTagName("field_sum")
                     if field_sum_nodes:
                         has_field_sum = True
                         for fs in field_sum_nodes:
                             if fs.nodeType == xml.dom.minidom.Node.ELEMENT_NODE and fs.hasAttribute("name"):
                                 field = fs.getAttribute("name").strip()
-                                value = fs.firstChild.nodeValue.strip() if fs.firstChild and fs.firstChild.nodeValue else "-"
+                                value = fs.firstChild.nodeValue.strip() if (fs.firstChild and fs.firstChild.nodeValue) else "-"
                                 self.tree.insert("", "end", values=[field, value])
-
-                # If no field_sum found, fall back to tagName-based entries
                 if not has_field_sum:
                     for sub in child.getElementsByTagName("enq_sum"):
                         for item in sub.childNodes:
                             if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
                                 field = item.tagName.strip()
-                                value = item.firstChild.nodeValue.strip() if item.firstChild and item.firstChild.nodeValue else "-"
+                                value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
                                 self.tree.insert("", "end", values=[field, value])
                 continue
-
-            # 4. Handle <section title="...">
             if tag == "section" and child.hasAttribute("title"):
                 title = child.getAttribute("title").strip()
                 self.tree.insert("", "end", values=[title, "-"])
                 self.parse_xml_to_treeview(child, title)
                 continue
-
-            # 5. Handle <record seq="...">
             if tag == "record" and child.hasAttribute("seq"):
                 seq = child.getAttribute("seq").strip()
-                self.tree.insert("", "end", values=["record", seq])
+                self.tree.insert("", "end", values=["Record", seq])
                 self.parse_xml_to_treeview(child, f"record_{seq}")
                 continue
-
-            # 6. Handle <data caption="..." name="...">...</data>
             if tag == "data":
                 caption = child.getAttribute("caption").strip()
                 name = child.getAttribute("name").strip()
                 field = caption if caption else name
-                value = child.firstChild.nodeValue.strip() if child.firstChild and child.firstChild.nodeValue else ""
+                value = child.firstChild.nodeValue.strip() if (child.firstChild and child.firstChild.nodeValue) else ""
                 self.tree.insert("", "end", values=[field, value])
                 continue
-
-            # 🔁 Recurse into children by default
             self.parse_xml_to_treeview(child, parent_path)
-
 
     def go_to_next(self):
         if self.all_accounts and self.current_index < len(self.all_accounts) - 1:
@@ -710,9 +864,19 @@ class XMLFormatView(ctk.CTkFrame):
         control_frame.grid_columnconfigure(1, weight=0)  # Buttons and Combobox
         control_frame.grid_columnconfigure(2, weight=1)  # Right spacer
 
-        # Previous Button
-        self.prev_button = ctk.CTkButton(control_frame, text="Previous", command=self.go_to_previous)
-        self.prev_button.grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        # Load arrow icons
+        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+        
+        self.prev_btn = ctk.CTkButton(
+            control_frame,
+            text="",
+            image=left_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.go_to_previous
+        )
+        self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
 
         # ttk Combobox
         self.ttk_style = ttk.Style()
@@ -724,13 +888,25 @@ class XMLFormatView(ctk.CTkFrame):
         self.account_combobox.bind("<<ComboboxSelected>>", self.display_xml_data)
         self.account_combobox.bind("<KeyRelease>", self.on_account_typing)
 
-        # Next Button
-        self.next_button = ctk.CTkButton(control_frame, text="Next", command=self.go_to_next)
-        self.next_button.grid(row=0, column=2, padx=10, pady=5, sticky="w")
+        self.next_btn = ctk.CTkButton(
+            control_frame,
+            text="",
+            image=right_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.go_to_next
+        )
+        self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
 
         # --- XML Display ---
         self.xml_display = ctk.CTkTextbox(self, width=600, height=300)
         self.xml_display.pack(pady=10, fill="both", expand=True)
+
+        # Add right-click context menu for copying
+        self.xml_display.bind("<Button-3>", self.show_context_menu)
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Copy Selection", command=self.copy_selection)
+        self.context_menu.add_command(label="Copy All", command=self.copy_all)
 
         # Refresh Button
         self.refresh_button = ctk.CTkButton(self, text="Refresh Data", command=self.refresh_data)
@@ -745,9 +921,26 @@ class XMLFormatView(ctk.CTkFrame):
         # Update combobox values dynamically
         self.account_combobox['values'] = filtered
 
-        # Optionally, show dropdown
-        if filtered:
-            self.account_combobox.event_generate('<Down>')
+            
+    def show_context_menu(self, event):
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+
+    def copy_selection(self):
+        try:
+            selected = self.xml_display.get("sel.first", "sel.last")
+        except tk.TclError:
+            selected = ""
+        if selected:
+            self.clipboard_clear()
+            self.clipboard_append(selected)
+
+    def copy_all(self):
+        all_text = self.xml_display.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(all_text)
 
     def refresh_data(self):
         # Get the shared data from the main app
@@ -819,78 +1012,169 @@ class CTOSSummaryView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
-        self.headers = ["", "Total"]
+        self.headers = ["", "Total", "MIA>=4", ">=4%", "AKPK", "AKPK %", "Woff", "Woff %"]
         self.sections = ["A", "B", "C", "D", "E"]
         self.rows = [""] + self.sections  # Blank (Total), then A–E
-
-        self.data = []  # List of records with 'NU_PTL' and 'Section'
         self.create_main_layout()
 
     def create_main_layout(self):
-        self.header_label = ctk.CTkLabel(self, text="CTOS Summary", font=ctk.CTkFont(size=16, weight="bold"))
+        self.header_label = ctk.CTkLabel(
+            self, text="CTOS Summary", font=ctk.CTkFont(size=16, weight="bold")
+        )
         self.header_label.pack(pady=(10, 5))
-
         self.control_frame = ctk.CTkFrame(self)
         self.control_frame.pack(fill="x", padx=10, pady=5)
-
         self.table_frame = ctk.CTkFrame(self)
         self.table_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Example button to trigger summary
-        self.refresh_button = ctk.CTkButton(self.control_frame, text="Refresh Summary", command=self.refresh_summary)
+        self.refresh_button = ctk.CTkButton(
+            self.control_frame, text="Refresh Summary", command=self.refresh_summary, anchor="center", width=150, height=30
+        )
         self.refresh_button.pack(side="left")
-
         self.create_summary_table({})  # Initial blank table
 
     def refresh_summary(self):
-        records = self.app.all_parsed_data  # Use your actual parsed data
+        records = self.app.shared_data  # DataFrame with NU_PTL and XML columns
         summary = self.calculate_summary(records)
         self.create_summary_table(summary)
 
     def calculate_summary(self, records):
-        unique_nu_ptls = set()
-        section_record_count = defaultdict(int)  # section => total record count
+        from collections import defaultdict
+        import pandas as pd
+        import xml.dom.minidom
 
-        for record in records:
-            nu_ptl = record.get("NU_PTL")
-            sections = record.get("Sections", {})
-            unique_nu_ptls.add(nu_ptl)
+        # Combine all XML fragments for each NU_PTL
+        combined_xml_per_nuptl = {}
+        grouped = records.groupby("NU_PTL")
+        for nu_ptl, group in grouped:
+            xml_fragments = [str(x) for x in group["XML"].tolist() if pd.notna(x) and str(x).strip()]
+            combined_xml = "".join(xml_fragments)
+            combined_xml_per_nuptl[nu_ptl] = combined_xml
 
-            for sec_id in self.sections:
-                records_in_section = sections.get(sec_id, [])
-                section_record_count[sec_id] += len(records_in_section)
+        unique_nu_ptls = set(combined_xml_per_nuptl.keys())
+        section_nu_ptls = {sec: set() for sec in self.sections}
+        section_record_count = defaultdict(lambda: {"total": 0, "mia": 0, "akpk": 0, "woff": 0})
 
-        summary = {
-            "": {"Total": len(unique_nu_ptls)}
+        for nu_ptl, xml_data in combined_xml_per_nuptl.items():
+            if not xml_data.strip():
+                continue
+            # Ensure XML is wrapped in a root tag
+            if not xml_data.strip().startswith("<root>"):
+                xml_data = f"<root>{xml_data}</root>"
+            try:
+                dom = xml.dom.minidom.parseString(xml_data)
+                for section in dom.getElementsByTagName("section"):
+                    sec_id = section.getAttribute("id").strip().upper()
+                    if sec_id in self.sections:
+                        records_in_section = section.getElementsByTagName("record")
+                        if records_in_section:
+                            section_nu_ptls[sec_id].add(nu_ptl)
+                        for rec in records_in_section:
+                            section_record_count[sec_id]["total"] += 1
+                            for data in rec.getElementsByTagName("data"):
+                                name = data.getAttribute("name").strip().upper()
+                                value = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                if name == "MIA":
+                                    try:
+                                        if int(value) >= 4:
+                                            section_record_count[sec_id]["mia"] += 1
+                                    except Exception:
+                                        pass
+                                if name == "AKPK":
+                                    try:
+                                        if int(value) == 1:
+                                            section_record_count[sec_id]["akpk"] += 1
+                                    except Exception:
+                                        pass
+                                if name == "WOFF":
+                                    try:
+                                        if int(value) == 1:
+                                            section_record_count[sec_id]["woff"] += 1
+                                    except Exception:
+                                        pass
+            except Exception as e:
+                # print(f"Error parsing XML for NU_PTL {nu_ptl}: {e}")
+                continue
+
+        summary = {}
+        # Overall totals (the Total row)
+        total_accounts = len(unique_nu_ptls)
+        overall_mia = sum(sec["mia"] for sec in section_record_count.values())
+        overall_akpk = sum(sec["akpk"] for sec in section_record_count.values())
+        overall_woff = sum(sec["woff"] for sec in section_record_count.values())
+        summary[""] = {
+            "Total": total_accounts,
+            "MIA>=4": overall_mia,
+            ">=4%": "",  # Not applicable for total row
+            "AKPK": overall_akpk,
+            "AKPK %": "",
+            "Woff": overall_woff,
+            "Woff %": "",
         }
-
         for sec in self.sections:
-            summary[sec] = {"Total": section_record_count[sec]}
-
+            total_nu_ptl_in_section = len(section_nu_ptls[sec])  # NU_PTLs with at least 1 record in this section
+            mia = section_record_count[sec]["mia"]
+            akpk = section_record_count[sec]["akpk"]
+            woff = section_record_count[sec]["woff"]
+            total = section_record_count[sec]["total"]  # total records in this section
+            summary[sec] = {
+                "Total": total_nu_ptl_in_section,
+                "MIA>=4": mia,
+                ">=4%": f"{(mia/total*100):.1f}%" if total > 0 else "-",
+                "AKPK": akpk,
+                "AKPK %": f"{(akpk/total*100):.1f}%" if total > 0 else "-",
+                "Woff": woff,
+                "Woff %": f"{(woff/total*100):.1f}%" if total > 0 else "-",
+            }
         return summary
-
 
     def create_summary_table(self, summary):
         for widget in self.table_frame.winfo_children():
             widget.destroy()
 
-        for col, header in enumerate(self.headers):
-            label = ctk.CTkLabel(self.table_frame, text=header, font=ctk.CTkFont(weight="bold"))
-            label.grid(row=0, column=col, padx=5, pady=5, sticky="nsew")
+        border_color = "#888888"  # Border color
+        border_width = 1
 
+        # Create header row
+        for col, header in enumerate(self.headers):
+            cell_frame = tk.Frame(
+                self.table_frame,
+                background=border_color,
+                highlightthickness=0
+            )
+            cell_frame.grid(row=0, column=col, sticky="nsew", padx=0, pady=0)
+            label = ctk.CTkLabel(
+                cell_frame,
+                text=header,
+                font=ctk.CTkFont(weight="bold"),
+                fg_color="#f5f5f5",
+                corner_radius=0
+            )
+            label.pack(fill="both", expand=True, padx=border_width, pady=border_width)
+
+        # Create rows for overall Total and each section
         for row_idx, row_label in enumerate(self.rows):
             for col_idx, header in enumerate(self.headers):
                 if col_idx == 0:
                     text = "Total" if row_label == "" else row_label
                 else:
                     text = summary.get(row_label, {}).get(header, "")
-                label = ctk.CTkLabel(self.table_frame, text=text)
-                label.grid(row=row_idx + 1, column=col_idx, padx=5, pady=3, sticky="nsew")
+                cell_frame = tk.Frame(
+                    self.table_frame,
+                    background=border_color,
+                    highlightthickness=0
+                )
+                cell_frame.grid(row=row_idx + 1, column=col_idx, sticky="nsew", padx=0, pady=0)
+                label = ctk.CTkLabel(
+                    cell_frame,
+                    text=str(text),
+                    fg_color="#fff",
+                    corner_radius=0
+                )
+                label.pack(fill="both", expand=True, padx=border_width, pady=border_width)
 
+        # Make columns expand equally
         for i in range(len(self.headers)):
             self.table_frame.grid_columnconfigure(i, weight=1)
-
-        
 
 if __name__ == "__main__":
     app = CTOSReportApp()
