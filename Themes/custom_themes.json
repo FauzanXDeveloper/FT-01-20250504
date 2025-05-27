@@ -1,0 +1,148 @@
+{
+  "CTk": {
+    "fg_color": ["#FFFFFF", "#1A2233"]
+  },
+  "CTkFrame": {
+    "corner_radius": 14,
+    "border_width": 0,
+    "fg_color": ["#E0F7FA", "#223A5E"],
+    "top_fg_color": ["#FFFFFF", "#1A2233"],
+    "border_color": ["#00BCD4", "#C9A13B"]
+  },
+  "CTkButton": {
+    "corner_radius": 10,
+    "border_width": 0,
+    "fg_color": ["#00BCD4", "#003366"],
+    "hover_color": ["#0097A7", "#0057A6"],
+    "border_color": ["#00BCD4", "#C9A13B"],
+    "text_color": ["#006064", "#FFFFFF"],
+    "text_color_disabled": ["#B0B0B0", "#444444"]
+  },
+  "CTkLabel": {
+    "corner_radius": 0,
+    "fg_color": "transparent",
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkFont": {
+    "family": ["Segoe UI", "Arial", "Helvetica", "sans-serif"],
+    "size": 11,
+    "weight": "normal"
+  },
+  "CTkEntry": {
+    "corner_radius": 8,
+    "border_width": 2,
+    "fg_color": ["#FFFFFF", "#223A5E"],
+    "border_color": ["#00BCD4", "#C9A13B"],
+    "text_color": ["#006064", "#F7F9FB"],
+    "placeholder_text_color": ["#A0A0A0", "#888888"]
+  },
+  "CTkCheckBox": {
+    "corner_radius": 6,
+    "border_width": 2,
+    "fg_color": ["#00BCD4", "#003366"],
+    "border_color": ["#00BCD4", "#C9A13B"],
+    "hover_color": ["#0097A7", "#0057A6"],
+    "checkmark_color": ["#FFFFFF", "#FFFFFF"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkProgressBar": {
+    "corner_radius": 1000,
+    "border_width": 0,
+    "fg_color": ["#E0E0E0", "#223A5E"],
+    "progress_color": ["#00BCD4", "#C9A13B"]
+  },
+  "CTkSlider": {
+    "corner_radius": 1000,
+    "button_corner_radius": 1000,
+    "border_width": 6,
+    "fg_color": ["#E0E0E0", "#223A5E"],
+    "progress_color": ["#00BCD4", "#003366"],
+    "button_color": ["#C9E9EE", "#C9A13B"],
+    "button_hover_color": ["#B2DFDB", "#FFD700"]
+  },
+  "CTkOptionMenu": {
+    "corner_radius": 8,
+    "fg_color": ["#E0F7FA", "#223A5E"],
+    "button_color": ["#00BCD4", "#003366"],
+    "button_hover_color": ["#0097A7", "#0057A6"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkComboBox": {
+    "corner_radius": 8,
+    "border_width": 2,
+    "fg_color": ["#E0F7FA", "#223A5E"],
+    "border_color": ["#00BCD4", "#C9A13B"],
+    "button_color": ["#00BCD4", "#003366"],
+    "button_hover_color": ["#0097A7", "#0057A6"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkScrollbar": {
+    "corner_radius": 1000,
+    "border_spacing": 4,
+    "fg_color": "transparent",
+    "button_color": ["#00BCD4", "#C9A13B"],
+    "button_hover_color": ["#0097A7", "#FFD700"]
+  },
+  "CTkSegmentedButton": {
+    "corner_radius": 8,
+    "border_width": 2,
+    "fg_color": ["#E0F7FA", "#223A5E"],
+    "selected_color": ["#00BCD4", "#003366"],
+    "selected_hover_color": ["#0097A7", "#0057A6"],
+    "unselected_color": ["#E0F7FA", "#223A5E"],
+    "unselected_hover_color": ["#B2DFDB", "#C9A13B"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkTextbox": {
+    "corner_radius": 8,
+    "border_width": 0,
+    "fg_color": ["#FFFFFF", "#223A5E"],
+    "border_color": ["#00BCD4", "#C9A13B"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "CTkScrollableFrame": {
+    "label_fg_color": ["#006064", "#223A5E"]
+  },
+  "DropdownMenu": {
+    "fg_color": ["#E0F7FA", "#223A5E"],
+    "hover_color": ["#B2DFDB", "#C9A13B"],
+    "text_color": ["#006064", "#F7F9FB"]
+  },
+  "Treeview": {
+    "rowheight": 28,
+    "font": ["Segoe UI 11", "Segoe UI 11"],
+    "background": ["#00BCD4", "#223A5E"],
+    "heading_background": ["#00BCD4", "#003366"],
+    "foreground": ["#006064", "#F7F9FB"],
+    "heading_foreground": ["#FFFFFF", "#FFD700"],
+    "selected_background": ["#E0F7FA", "#C9A13B"],
+    "selected_foreground": ["#006064", "#223A5E"]
+  },
+  "Header": {
+        "bg_color": "#E0F7FA",
+        "height": 100,
+        "title": "Excel All Task",
+        "title_font": ["Arial", 22, "bold"],
+        "title_color": "#006064"
+    },
+    "Logo1": {
+        "path": "bnm_logo.png",
+        "size": [300, 56]
+    },
+    "Logo2": {
+        "path": "alrajhi_logo.png",
+        "size": [170, 60]
+    },
+    "Control": {
+        "bg_color": "transparent",
+        "export_button": {
+            "text": "Export",
+            "width": 150,
+            "height": 40,
+            "font": ["Arial", 15, "bold"],
+            "corner_radius": 10,
+            "border_width": 2,
+            "fg_color": "transparent"
+        }
+    }
+}
