@@ -5,11 +5,21 @@ import pandas as pd
 from PIL import Image, ImageTk, ImageDraw
 import datetime
 import threading
- 
+import subprocess
+import sys
+import os
+import psutil
+import win32gui
+import win32con
+from openpyxl import Workbook
+from tkinter import ttk, messagebox
+
+
+ctk.set_default_color_theme("Themes/custom_themes.json")
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
  
 app = ctk.CTk()
+app.iconbitmap("ccris.ico")
 app.title("CCRIS Credit Report")
 app.geometry("1800x900")
 
@@ -50,19 +60,7 @@ hamburger_btn = ctk.CTkButton(
 )
 hamburger_btn.pack(pady=(8, 0), padx=(4, 0), anchor="nw")
 
-# --- Hamburger Button ---
-hamburger_img = ctk.CTkImage(Image.open("hamburger.png"), size=(24, 24))
-hamburger_btn = ctk.CTkButton(
-    app,
-    text="",
-    image=hamburger_img,
-    width=32,
-    height=40,
-    fg_color="transparent",
-    hover_color="#333",
-    command=lambda: toggle_sidebar()
-)
-hamburger_btn.place(x=8, y=8)
+
 
 # # --- Sidebar Toggle Logic ---
 sidebar_expanded = True
@@ -83,7 +81,6 @@ btn_report = ctk.CTkButton(
     bg_color="transparent",
     corner_radius=10,
     border_width=2,
-    border_color="blue"
     
 )
 btn_report.pack(pady=10, padx=(0, 0))
@@ -98,9 +95,89 @@ btn_another = ctk.CTkButton(
     font=("Arial", 15, "bold"),
     corner_radius=10,
     border_width=2,
-    border_color="blue"
 )
 btn_another.pack(pady=10, padx=(0, 0))
+
+def is_integrate_running():
+    """
+    Check if a process running integrate.py exists.
+    Returns the process if found, otherwise None.
+    """
+    for proc in psutil.process_iter(attrs=["cmdline"]):
+        try:
+            cmdline = proc.info["cmdline"]
+            if cmdline and "integrate.py" in " ".join(cmdline):
+                return proc
+        except Exception:
+            continue
+    return None
+
+def bring_integrate_to_front():
+    """
+    Brings the window with title containing 'Report Launcher' (adjust if needed)
+    to the front.
+    """
+    def enum_callback(hwnd, results):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if "Report Launcher" in title:
+                results.append(hwnd)
+    hwnds = []
+    win32gui.EnumWindows(enum_callback, hwnds)
+    if hwnds:
+        h = hwnds[0]
+        # Restore the window (if minimized) and bring to foreground
+        win32gui.ShowWindow(h, win32con.SW_RESTORE)
+        win32gui.SetForegroundWindow(h)
+
+def back_to_main():
+    script_path = os.path.join(os.getcwd(), "integrate.py")
+    proc = is_integrate_running()
+    if proc is None:
+        subprocess.Popen([sys.executable, script_path])
+    else:
+        bring_integrate_to_front()
+
+btn_main = ctk.CTkButton(
+    menu_frame,
+    text="🔙 Back to Main",
+    width=150,
+    height=40,
+    command=back_to_main,  # Pass the function reference without parentheses
+    fg_color="transparent",
+    bg_color="transparent",
+    font=("Arial", 15, "bold"),
+    corner_radius=10,
+    border_width=2,
+)
+btn_main.pack(pady=10, padx=(0, 0))
+
+# --- Start with sidebar expanded ---
+sidebar.configure(width=SIDEBAR_EXPANDED_WIDTH)
+menu_frame.pack(fill="both", expand=True)
+
+# At the very bottom of the sidebar, add a container for the toggle and settings buttons:
+sidebar_bottom = ctk.CTkFrame(sidebar, fg_color="transparent")
+sidebar_bottom.pack(side="bottom", fill="x", pady=10)
+
+# Create an inner frame to hold both buttons side by side
+toggle_setting_frame = ctk.CTkFrame(sidebar_bottom, fg_color="transparent")
+toggle_setting_frame.pack(fill="x", pady=5)
+
+# Load icons (if not already loaded)
+try:
+    dark_icon = ctk.CTkImage(Image.open("dark_mode_icon.png"), size=(24, 24))
+    light_icon = ctk.CTkImage(Image.open("light_mode_icon.png"), size=(24, 24))
+except Exception as e:
+    print(f"Error loading toggle icons: {e}")
+    dark_icon = None
+    light_icon = None
+
+setting_icon = ctk.CTkImage(Image.open("setting.png"), size=(24, 24))
+
+
+# Set initial mode tracker
+current_mode = {"mode": "dark"}
 
 def toggle_sidebar():
     global sidebar_expanded
@@ -112,12 +189,33 @@ def toggle_sidebar():
         sidebar.configure(width=SIDEBAR_EXPANDED_WIDTH)
         menu_frame.pack(fill="both", expand=True)
         sidebar_expanded = True
+        
+        
+def toggle_sidebar_mode():
+    # Toggle between dark and light modes using patina theme settings
+    if current_mode["mode"] == "dark":
+        ctk.set_appearance_mode("light")
+        mode_toggle_btn.configure(image=light_icon)
+        current_mode["mode"] = "light"
+    else:
+        ctk.set_appearance_mode("dark")
+        mode_toggle_btn.configure(image=dark_icon)
+        current_mode["mode"] = "dark"
 
-# --- Start with sidebar expanded ---
-sidebar.configure(width=SIDEBAR_EXPANDED_WIDTH)
-menu_frame.pack(fill="both", expand=True)
+# Create the dark/light mode toggle button
+mode_toggle_btn = ctk.CTkButton(
+    toggle_setting_frame,
+    text="",
+    image=dark_icon,  # initially dark mode icon
+    width=40,
+    height=40,
+    fg_color="transparent",
+    hover_color="#444",
+    command=toggle_sidebar_mode
+)
+mode_toggle_btn.pack(side="left", expand=True, padx=5)
 
- 
+
 # Placeholder for button commands
 def do_nothing():
     pass
@@ -130,6 +228,7 @@ class CCRISReport:
         
         # Set Treeview style to dark before creating any Treeview
         self.set_treeview_style("dark")
+        self.set_treeview_style(ctk.get_appearance_mode())
         
         # --- Scrollable Frame Setup ---
         self.outer_frame = ctk.CTkFrame(parent)
@@ -174,13 +273,6 @@ class CCRISReport:
             self.canvas.itemconfig(self.frame_id, width=event.width)
         self.canvas.bind("<Configure>", on_canvas_configure)
 
-        # # Make mousewheel scroll work
-        # def _on_mousewheel(event):
-        #     self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        # self.canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        
-        # self.outer_frame.pack_forget()
- 
         # Header
         self.header = ctk.CTkFrame(self.frame)
         self.header.pack(fill="x", pady=10)
@@ -191,46 +283,82 @@ class CCRISReport:
         ctk.CTkLabel(self.header, text="CREDIT REPORT", font=("Arial", 22, "bold")).grid(row=0, column=0, padx=(20, 10), sticky="w")
         ctk.CTkLabel(self.header, image=alrajhi_logo_image, text="").grid(row=0, column=2, padx=10, pady=5, sticky="nsew")
  
-        # Controls
+        # Replace your entire "Controls" section with the following grid-only layout:
+
         self.control_frame = ctk.CTkFrame(self.frame)
-        self.control_frame.pack(fill="x", pady=5)
- 
-        ctk.CTkButton(self.control_frame, text="Import CCRIS Excel", command=self.load_excel).pack(side="left", padx=10)
+        self.control_frame.pack(fill="x", pady=5)  # use pack to place the frame in self.frame
+
+        # Configure columns of the control_frame (you can adjust weights as needed)
+        self.control_frame.grid_columnconfigure(0, weight=1)  # Import button column
+        self.control_frame.grid_columnconfigure(1, weight=2)  # Navigation controls column
+        self.control_frame.grid_columnconfigure(2, weight=1)  # (optional extra spacer)
+
+        import_icon = ctk.CTkImage(Image.open("importing.png"), size=(24, 24))
+        
+        # Import button (placed at left)
+        self.import_button = ctk.CTkButton(self.control_frame, text="Import CCRIS Excel", image=import_icon ,command=self.load_excel)
+        self.import_button.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+
+        # Create a navigation subframe to hold previous, combobox, and next buttons centered
+        nav_frame = ctk.CTkFrame(self.control_frame)
+        nav_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+
+        # Configure three columns inside nav_frame so controls can be centered
+        nav_frame.grid_columnconfigure(0, weight=1)  # left spacer
+        nav_frame.grid_columnconfigure(1, weight=0)  # center control column
+        nav_frame.grid_columnconfigure(2, weight=1)  # right spacer
+
+        # Load arrow icons
+        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+
+        # Previous Button in left column (aligned to right)
+        self.prev_btn = ctk.CTkButton(
+            nav_frame,
+            text="",
+            image=left_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.on_previous
+        )
+        self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
+
+        # Combobox in center column
         self.selected_pg_rqs = ctk.StringVar()
         style = ttk.Style()
         style.configure("Custom.TCombobox", font=("Arial", 16))
-        self.pg_dropdown = ttk.Combobox(
-            self.control_frame,
-            textvariable=self.selected_pg_rqs,
-            width=25,
-            style="Custom.TCombobox"
-        )
-        self.pg_dropdown.pack(side="left", padx=10)
+        self.pg_dropdown = ttk.Combobox(nav_frame,
+                                        textvariable=self.selected_pg_rqs,
+                                        width=25,
+                                        style="Custom.TCombobox")
+        self.pg_dropdown.grid(row=0, column=1, padx=10, pady=5)
         self.pg_dropdown.bind("<<ComboboxSelected>>", lambda event: self.load_pg_data())
- 
+
+        self.next_btn = ctk.CTkButton(
+            nav_frame,
+            text="",
+            image=right_arrow_icon,
+            fg_color="transparent",
+            hover_color="#444",
+            command=self.on_next
+        )
+        self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
+        
         self.arrears_label = ctk.CTkLabel(self.control_frame, text="Arrears in 12 Months:")
-        self.arrears_label.pack(side="left", padx=20)
- 
-        # Dark mode toggle
-        light_icon = ctk.CTkImage(Image.open("light_mode_icon.png"), size=(24, 24))
-        dark_icon = ctk.CTkImage(Image.open("dark_mode_icon.png"), size=(24, 24))
-        self.current_icon = {"mode": "dark"}
-        self.mode_icon_btn = ctk.CTkButton(self.control_frame, text="", image=light_icon, width=32, height=32, command=self.toggle_mode_icon)
-        self.mode_icon_btn.pack(side="right", padx=10)
-        self.light_icon = light_icon
-        self.dark_icon = dark_icon
- 
+        self.arrears_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
+
         # Table Section
         self.table_section = ctk.CTkFrame(self.frame)
         self.table_section.pack(fill="both", expand=True, padx=10, pady=10)
         self.table_section.update_idletasks()
         self.table_section.configure(width=1800)  # or a value wide enough for all columns
- 
+        
         # Table columns
         self.outstanding_cols = ["No", "Approval Date", "Status", "Capacity", "Lender", "Branch", "Facility",
                                  "Total Outstanding", "Balance Date", "Limit", "Collateral", "Repayment Term",
                                  "12-Month Arrears", "Legal Status", "Legal Date"]
  
+        
         # Outstanding Credit
         ctk.CTkLabel(self.table_section, text="Outstanding Credit", font=("Arial", 14, "bold")).pack(anchor="w")
         self.outstanding_tree = self.create_table(self.table_section, self.outstanding_cols, height=6)
@@ -249,7 +377,29 @@ class CCRISReport:
  
         # Hide by default (will be shown by sidebar button)
         self.frame.pack_forget()
-       
+    
+    # Function to handle mouse wheel events
+        def _on_mousewheel(event):
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Bind mouse wheel when cursor enters canvas,
+        # unbind it when cursor leaves
+        self.canvas.bind("<Enter>", lambda e: self.canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        self.canvas.bind("<Leave>", lambda e: self.canvas.unbind_all("<MouseWheel>"))
+
+    def on_previous(self):
+        # Example: set the combobox to the previous page (if available)
+        current_index = self.pg_dropdown.current()
+        if current_index > 0:
+            self.pg_dropdown.current(current_index - 1)
+            self.load_pg_data()
+
+    def on_next(self):
+        # Example: set the combobox to the next page (if available)
+        current_index = self.pg_dropdown.current()
+        if current_index < len(self.pg_dropdown['values']) - 1:
+            self.pg_dropdown.current(current_index + 1)
+            self.load_pg_data()
+        
     def show_loading(self):
         self.loading_label.lift()
         self.loading_gif_running = True
@@ -381,6 +531,8 @@ class CCRISReport:
  
         # self.task_tab.show_content(self.excel_data, pg)
         self.task_tab.set_data(self.excel_data, pg)
+        if self.task_tab.visible:
+            self.task_tab.show_content(self.excel_data, pg)
         
        
     def clear_table(self, tree):
@@ -391,9 +543,28 @@ class CCRISReport:
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="both", expand=True, pady=5)
 
-        tree = ttk.Treeview(frame, columns=columns, show="headings", height=height)
+        # Create the Treeview with the "Treeview" style.
+        tree = ttk.Treeview(
+            frame,
+            columns=columns,
+            show="headings",
+            height=height,
+            style="Treeview",
+            selectmode="browse"
+        )
         tree.pack(side="left", fill="both", expand=True)
 
+        # Update column widths when the frame resizes
+        def adjust_columns(event):
+            total_width = event.width
+            # Subtract a few pixels for padding if needed
+            col_width = total_width // len(columns)
+            for col in columns:
+                tree.column(col, anchor="center", width=col_width, stretch=True)
+
+        frame.bind("<Configure>", adjust_columns)
+
+        # Set headings (initial settings; widths will be adjusted on resize)
         for col in columns:
             tree.heading(col, text=col)
             tree.column(col, anchor="center", width=120, stretch=True)
@@ -404,39 +575,28 @@ class CCRISReport:
  
     def set_treeview_style(self, mode):
         style = ttk.Style()
-        if mode == "dark":
-            style = ttk.Style()
-            style.theme_use("default")
-            style.configure("Treeview",
-                            background="#222222",
-                            foreground="#ffffff",
-                            fieldbackground="#222222",
-                            rowheight=25)
-            style.map("Treeview", background=[("selected", "#444444")])
-        else:
-            style.theme_use("default")
-            style.configure("Treeview",
-                            background="#ffffff",
-                            foreground="#000000",
-                            fieldbackground="#ffffff",
-                            rowheight=25)
-            style.map("Treeview", background=[("selected", "#cce6ff")])
- 
-    def toggle_mode_icon(self):
-        current = ctk.get_appearance_mode()
-        if current == "Light":
-            ctk.set_appearance_mode("dark")
-            self.set_treeview_style("dark")
-            self.mode_icon_btn.configure(image=self.light_icon)
-            self.current_icon["mode"] = "dark"
-        else:
-            ctk.set_appearance_mode("light")
-            self.set_treeview_style("light")
-            self.mode_icon_btn.configure(image=self.dark_icon)
-            self.current_icon["mode"] = "light"
-
-    
-    
+        # Force the treeview area to fill the widget even if empty:
+        style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+        
+        # Get theme settings from CustomTkinter's ThemeManager:
+        theme = ctk.ThemeManager.theme
+        is_dark = 1 if mode.lower() == "dark" else 0
+        
+        style.configure("Treeview",
+                        rowheight=theme["Treeview"].get("rowheight", 25),
+                        font=("Segoe UI", 11),
+                        background=theme["Treeview"]["background"][is_dark],
+                        fieldbackground=theme["Treeview"]["background"][is_dark],
+                        foreground=theme["Treeview"]["foreground"][is_dark])
+        
+        style.configure("Treeview.Heading",
+                        font=("Segoe UI", 11, "bold"),
+                        background=theme["Treeview"]["heading_background"][is_dark],
+                        foreground="#000000")  # Set header text to black
+        
+        style.map("Treeview",
+                background=[("selected", theme["Treeview"]["selected_background"][is_dark])],
+                foreground=[("selected", theme["Treeview"]["selected_foreground"][is_dark])])
 
 class TaskTabBar:
     def __init__(self, parent):
@@ -689,9 +849,63 @@ class TaskTabBar:
 class ExcelAllTask:
     def __init__(self, parent):
         self.parent = parent
+        self.search_var = tk.StringVar()
         self.frame = ctk.CTkFrame(parent)
-        ctk.CTkLabel(self.frame, text="Excel All Task - Calculation Display", font=("Arial", 18, "bold")).pack(pady=10)
+        self.frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # --- Header (with logos) ---
+        self.header = ctk.CTkFrame(self.frame)
+        self.header.pack(fill="x", pady=10)
+        # Load logo images (adjust your sizes as needed)
+        logo_image = ctk.CTkImage(Image.open("bnm_logo.png"), size=(300, 56))
+        alrajhi_logo_image = ctk.CTkImage(Image.open("alrajhi_logo.png"), size=(170, 60))
+        self.header.columnconfigure((0, 1, 2), weight=1)
+        ctk.CTkLabel(self.header, text="Excel All Task", font=("Arial", 22, "bold")).grid(row=0, column=0, padx=(20, 10), sticky="w")
+        ctk.CTkLabel(self.header, image=logo_image, text="").grid(row=0, column=1, padx=10, pady=5, sticky="nsew")
+        ctk.CTkLabel(self.header, image=alrajhi_logo_image, text="").grid(row=0, column=2, padx=10, pady=5, sticky="nsew")
+        
+        self.control_frame = ctk.CTkFrame(self.frame)
+        self.control_frame.pack(fill="x", pady=5)
 
+        self.control_frame.grid_columnconfigure(0, weight=1)
+        self.control_frame.grid_columnconfigure(1, weight=1)
+        self.control_frame.grid_columnconfigure(2, weight=1)
+
+        # Left: Label
+        ctk.CTkLabel(
+            self.control_frame,
+            text="Excel All Task",
+            font=("Arial", 16, "bold")
+        ).grid(row=0, column=0, padx=10, sticky="w")
+
+        # Center: Search bar
+        search_inner_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
+        search_inner_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
+        search_inner_frame.grid_columnconfigure(0, weight=1)
+        search_inner_frame.grid_columnconfigure(1, weight=0)
+        search_inner_frame.grid_columnconfigure(2, weight=1)
+
+        ctk.CTkLabel(search_inner_frame, text="Search:").grid(row=0, column=0, sticky="e", padx=(0, 5))
+        search_entry = ctk.CTkEntry(search_inner_frame, textvariable=self.search_var, width=300)
+        search_entry.grid(row=0, column=1, sticky="ew")
+        search_entry.bind("<Return>", self.on_search)
+        search_entry.bind("<KeyRelease>", lambda e: None)
+
+        # Right: Export button
+        self.export_button = ctk.CTkButton(
+            self.control_frame,
+            text="Export",
+            command=self.export_data,
+            image=ctk.CTkImage(Image.open("export.png"), size=(24, 24)),
+            width=150,
+            height=40,
+            font=("Arial", 15, "bold"),
+            fg_color="transparent",
+            border_width=2,
+            corner_radius=10
+        )
+        self.export_button.grid(row=0, column=2, padx=10, sticky="e")
+        
         
         # --- Animated GIF Loading (rotating and small) ---
         self.loading_gif = Image.open("loading.gif")
@@ -726,6 +940,43 @@ class ExcelAllTask:
         yscroll.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=yscroll.set)
 
+    def export_data(self):
+        # Ask the user for a file path
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel Files", "*.xlsx")],
+            title="Save Export"
+        )
+        if not file_path:
+            return
+        # Create a workbook and sheet using openpyxl
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Tasks Export"
+        # Write header
+        ws.append(self.columns)
+        # Write each row from the treeview
+        for row_id in self.tree.get_children():
+            row_data = self.tree.item(row_id)['values']
+            ws.append(row_data)
+        wb.save(file_path)
+        messagebox.showinfo("Export", "Export completed successfully!")
+    
+    def on_search(self, event=None):
+        query = self.search_var.get().lower()
+        if not query:
+            return
+        # Remove any previous selection
+        self.tree.selection_remove(self.tree.selection())
+        # Search all rows for the first match in any column
+        for row_id in self.tree.get_children():
+            row_data = self.tree.item(row_id)['values']
+            if any(query in str(val).lower() for val in row_data):
+                # Highlight and scroll to the row
+                self.tree.selection_set(row_id)
+                self.tree.focus(row_id)
+                self.tree.see(row_id)
+                break
     
     def show_loading(self):
         self.loading_label.lift()
@@ -802,12 +1053,11 @@ class ExcelAllTask:
         pending_count_last_month = 0
         pending_numbers_str = "-"
         report_date_str = "-"
-        mth_c_value = "12-Month Arrears"
         if "part_4" in excel_data and pg:
             df_part4 = excel_data["part_4"]
             df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], format="%d/%m/%Y", errors="coerce").max()
+                latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(latest_report_date):
                     report_date_str = latest_report_date.strftime("%d-%m-%Y")
                     one_month_ago = latest_report_date - pd.DateOffset(months=1)
@@ -820,13 +1070,8 @@ class ExcelAllTask:
                     pending_numbers = df_pg_part4.loc[mask, "REC_CTR"].tolist()
                     if pending_numbers:
                         pending_numbers_str = ", ".join(str(n) for n in pending_numbers)
-        if "part_1" in excel_data and pg:
-            arrears_df = excel_data["part_1"]
-            mth_c = arrears_df.loc[arrears_df["PG_RQS"] == pg, "MTH_C"]
-            if not mth_c.empty:
-                mth_c_value = mth_c.iloc[0]
         task1 = f"{pending_count_last_month} (Rows: {pending_numbers_str}, Report: {report_date_str})"
-
+       
         # Task 2: CRDTCARD Outstanding
         task2 = "-"
         if "part_2" in excel_data and pg:
@@ -906,29 +1151,30 @@ class ExcelAllTask:
             task8 = f"{count} (Outstanding: {outstanding})"
 
         return [task1, task2, task3, task4, task5, task6, task7, task8]
+
  
 # --- Main Content Area ---
 main_content = ctk.CTkFrame(app)
-main_content.pack(side="left", fill="both", expand=True, padx=(18, 0))  # Increased left padding for more space between sidebar and main content
+main_content.pack(side="left", fill="both", expand=True, padx=(18, 0))  # Adjust padding as needed
 
-# Instantiate classes
+# Instantiate pages (now that main_content is defined)
 ccris_report = CCRISReport(main_content)
 excel_all_task = ExcelAllTask(main_content)
- 
+
 # --- Sidebar Button Commands ---
 def show_ccris_report():
     excel_all_task.hide()
     ccris_report.show()
- 
+
 def show_excel_all_task():
     ccris_report.hide()
     excel_all_task.show()
- 
+
+
 btn_report.configure(command=show_ccris_report)
 btn_another.configure(command=show_excel_all_task)
- 
+
 # Show CCRIS report by default
 show_ccris_report()
- 
+
 app.mainloop()
- 
