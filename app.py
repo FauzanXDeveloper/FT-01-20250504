@@ -548,7 +548,8 @@ class CTOSReportView(ctk.CTkFrame):
             if child.nodeType != xml.dom.minidom.Node.ELEMENT_NODE:
                 continue
             tag = child.tagName
-            # Example: handle <enq_report>
+
+            # --- Existing logic ---
             if tag == "enq_report" and child.hasAttribute("id"):
                 field = "Report ID"
                 value = child.getAttribute("id")
@@ -556,22 +557,18 @@ class CTOSReportView(ctk.CTkFrame):
                 self.parse_xml_to_treeview(child, field)
                 continue
             if tag == "header":
-                # Check if this header is broken (contains a nested <report> element)
                 has_nested_report = any(r for r in child.getElementsByTagName("report"))
                 if has_nested_report:
-                    # Instead of skipping completely, recursively process its children
                     for sub in child.childNodes:
                         self.parse_xml_to_treeview(sub, parent_path)
                     continue
                 else:
-                    # Process a good header normally
                     for sub in child.childNodes:
                         if sub.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
                             sub_tag = sub.tagName
                             value = sub.firstChild.nodeValue.strip() if (sub.firstChild and sub.firstChild.nodeValue) else "-"
                             self.tree.insert("", "end", values=[sub_tag, value])
                     continue
-            # New summary logic
             if tag == "summary":
                 has_field_sum = False
                 for sub in child.getElementsByTagName("enq_sum"):
@@ -608,6 +605,176 @@ class CTOSReportView(ctk.CTkFrame):
                 value = child.firstChild.nodeValue.strip() if (child.firstChild and child.firstChild.nodeValue) else ""
                 self.tree.insert("", "end", values=[field, value])
                 continue
+
+            # --- New CTOS XML logic below ---
+
+            # SECTION A (new format)
+            if tag == "section_a":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION A"
+                self.tree.insert("", "end", values=[title, "-"])
+                for record in child.getElementsByTagName("record"):
+                    seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                    self.tree.insert("", "end", values=["Record", seq])
+                    for item in record.childNodes:
+                        if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                            field = item.tagName
+                            # For nested addr_breakdown
+                            if field == "addr_breakdown":
+                                for addr_item in item.childNodes:
+                                    if addr_item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                        subfield = addr_item.tagName
+                                        subvalue = addr_item.firstChild.nodeValue.strip() if (addr_item.firstChild and addr_item.firstChild.nodeValue) else "-"
+                                        self.tree.insert("", "end", values=[subfield, subvalue])
+                                continue
+                            value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                            self.tree.insert("", "end", values=[field, value])
+                continue
+
+            # SECTION B (new format)
+            if tag == "section_b":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION B"
+                self.tree.insert("", "end", values=[title, "-"])
+                # Handle <history> nodes
+                for history in child.getElementsByTagName("history"):
+                    year = history.getAttribute("year") if history.hasAttribute("year") else "-"
+                    seq = history.getAttribute("seq") if history.hasAttribute("seq") else "-"
+                    self.tree.insert("", "end", values=["history_year", year])
+                    self.tree.insert("", "end", values=["history_seq", seq])
+                    for period in history.getElementsByTagName("period"):
+                        month = period.getAttribute("month") if period.hasAttribute("month") else "-"
+                        self.tree.insert("", "end", values=["period_month", month])
+                        for entity in period.getElementsByTagName("entity"):
+                            etype = entity.getAttribute("type") if entity.hasAttribute("type") else "-"
+                            value = entity.getAttribute("value") if entity.hasAttribute("value") else "-"
+                            self.tree.insert("", "end", values=[f"entity_{etype}", value])
+                # Handle <record> nodes (old style)
+                for record in child.getElementsByTagName("record"):
+                    seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                    self.tree.insert("", "end", values=["Record", seq])
+                    for item in record.childNodes:
+                        if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                            field = item.tagName
+                            value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                            self.tree.insert("", "end", values=[field, value])
+                continue
+
+            # SECTION C (new format, including broken/nested)
+            if tag == "section_c":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION C"
+                self.tree.insert("", "end", values=[title, "-"])
+                for record in child.getElementsByTagName("record"):
+                    seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                    self.tree.insert("", "end", values=["Record", seq])
+                    def flatten_record(node):
+                        for item in node.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                # If the node has element children, flatten recursively
+                                if any(c.nodeType == xml.dom.minidom.Node.ELEMENT_NODE for c in item.childNodes):
+                                    flatten_record(item)
+                                else:
+                                    value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                    self.tree.insert("", "end", values=[field, value])
+                    flatten_record(record)
+                continue
+            
+                        # SECTION D (new format)
+            if tag == "section_d":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION D"
+                self.tree.insert("", "end", values=[title, "-"])
+                for record in child.getElementsByTagName("record"):
+                    seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                    self.tree.insert("", "end", values=["Record", seq])
+                    for item in record.childNodes:
+                        if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                            field = item.tagName
+                            # Flatten <action>
+                            if field == "action":
+                                for subitem in item.childNodes:
+                                    if subitem.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                        subfield = f"action_{subitem.tagName}"
+                                        subvalue = subitem.firstChild.nodeValue.strip() if (subitem.firstChild and subitem.firstChild.nodeValue) else "-"
+                                        self.tree.insert("", "end", values=[subfield, subvalue])
+                                continue
+                            # Flatten <settlement>
+                            if field == "settlement":
+                                for subitem in item.childNodes:
+                                    if subitem.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                        subfield = f"settlement_{subitem.tagName}"
+                                        subvalue = subitem.firstChild.nodeValue.strip() if (subitem.firstChild and subitem.firstChild.nodeValue) else "-"
+                                        self.tree.insert("", "end", values=[subfield, subvalue])
+                                continue
+                            value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                            self.tree.insert("", "end", values=[field, value])
+                continue
+            
+            # SECTION E (new format)
+            if tag == "section_e":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION E"
+                self.tree.insert("", "end", values=[title, "-"])
+                for enquiry in child.getElementsByTagName("enquiry"):
+                    seq = enquiry.getAttribute("seq") if enquiry.hasAttribute("seq") else ""
+                    account_no = enquiry.getAttribute("account_no") if enquiry.hasAttribute("account_no") else "-"
+                    tref_id = enquiry.getAttribute("tref_id") if enquiry.hasAttribute("tref_id") else "-"
+                    self.tree.insert("", "end", values=["Enquiry Seq", seq])
+                    self.tree.insert("", "end", values=["Account No", account_no])
+                    self.tree.insert("", "end", values=["Tref ID", tref_id])
+                    # subject
+                    for subject in enquiry.getElementsByTagName("subject"):
+                        for item in subject.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                self.tree.insert("", "end", values=[field, value])
+                    # relationship
+                    for rel in enquiry.getElementsByTagName("relationship"):
+                        for item in rel.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                self.tree.insert("", "end", values=[field, value])
+                    # account_status
+                    for acc in enquiry.getElementsByTagName("account_status"):
+                        for item in acc.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                # For <age> node, flatten children
+                                if field == "age":
+                                    for age_item in item.childNodes:
+                                        if age_item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                            subfield = age_item.tagName
+                                            subvalue = age_item.firstChild.nodeValue.strip() if (age_item.firstChild and age_item.firstChild.nodeValue) else "-"
+                                            self.tree.insert("", "end", values=[subfield, subvalue])
+                                    continue
+                                value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                self.tree.insert("", "end", values=[field, value])
+                    # legal_action
+                    for legal in enquiry.getElementsByTagName("legal_action"):
+                        status = legal.getAttribute("status") if legal.hasAttribute("status") else "-"
+                        self.tree.insert("", "end", values=["legal_action_status", status])
+                        for item in legal.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                # For reminder_letter, demand_letter_by_company, demand_letter_by_lawyer
+                                for subitem in item.childNodes:
+                                    if subitem.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                        subfield = f"{field}_{subitem.tagName}"
+                                        subvalue = subitem.firstChild.nodeValue.strip() if (subitem.firstChild and subitem.firstChild.nodeValue) else "-"
+                                        self.tree.insert("", "end", values=[subfield, subvalue])
+                                # If the item has text directly
+                                if item.firstChild and item.firstChild.nodeType == xml.dom.minidom.Node.TEXT_NODE:
+                                    value = item.firstChild.nodeValue.strip()
+                                    self.tree.insert("", "end", values=[field, value])
+                    # referee_contact
+                    for refc in enquiry.getElementsByTagName("referee_contact"):
+                        for item in refc.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                self.tree.insert("", "end", values=[field, value])
+                continue
+
+            # --- fallback: process children ---
             self.parse_xml_to_treeview(child, parent_path)
 
     def go_to_next(self):
@@ -949,17 +1116,32 @@ class XMLFormatView(ctk.CTkFrame):
             self.process_data(data)
 
     def process_data(self, data):
-        self.xml_data = {}
-        grouped = data.groupby("NU_PTL")
-        for nu_ptl, group in grouped:
-            group = group.sort_values("ROW_ID")
-            combined_xml = "".join(str(x) for x in group["XML"].tolist())
-            self.xml_data[str(nu_ptl)] = combined_xml
-        
-        # Store all NU_PTL values for reference
-        self.all_accounts = list(self.xml_data.keys())
+        from collections import defaultdict
 
-        self.all_accounts = list(self.xml_data.keys())
+        self.xml_data = {}
+        self.all_accounts = []
+
+        # Group by NU_PTL
+        for nu_ptl, group in data.groupby("NU_PTL"):
+            group = group.sort_values("ROW_ID").reset_index(drop=True)
+            # Count how many times each ROW_ID has appeared so far
+            rowid_counters = defaultdict(int)
+            set_indices = []
+            for idx, row in group.iterrows():
+                rid = row["ROW_ID"]
+                set_indices.append(rowid_counters[rid])
+                rowid_counters[rid] += 1
+            # Now, group by set index
+            sets = defaultdict(list)
+            for idx, row in enumerate(group.itertuples()):
+                set_idx = set_indices[idx]
+                sets[set_idx].append(str(row.XML))
+            # Save as separate documents: key = f"{nu_ptl}_{set_idx}"
+            for set_idx, xmls in sets.items():
+                key = f"{nu_ptl}_{set_idx}"
+                self.xml_data[key] = "".join(xmls)
+                self.all_accounts.append(key)
+
         self.account_combobox['values'] = self.all_accounts
         if self.all_accounts:
             self.account_var.set(self.all_accounts[0])
