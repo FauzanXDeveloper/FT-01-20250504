@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from tkinter import ttk, messagebox
 
 
-ctk.set_default_color_theme("Themes/custom_themes.json")
+ctk.set_default_color_theme("Themes/breeze.json")
 ctk.set_appearance_mode("dark")
  
 app = ctk.CTk()
@@ -172,8 +172,6 @@ except Exception as e:
     print(f"Error loading toggle icons: {e}")
     dark_icon = None
     light_icon = None
-
-setting_icon = ctk.CTkImage(Image.open("setting.png"), size=(24, 24))
 
 
 # Set initial mode tracker
@@ -850,98 +848,136 @@ class ExcelAllTask:
     def __init__(self, parent):
         self.parent = parent
         self.search_var = tk.StringVar()
-        self.frame = ctk.CTkFrame(parent)
+        self.frame = ctk.CTkFrame(parent, corner_radius=12)
         self.frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # --- Header (with logos) ---
-        self.header = ctk.CTkFrame(self.frame)
-        self.header.pack(fill="x", pady=10)
-        # Load logo images (adjust your sizes as needed)
-        logo_image = ctk.CTkImage(Image.open("bnm_logo.png"), size=(300, 56))
-        alrajhi_logo_image = ctk.CTkImage(Image.open("alrajhi_logo.png"), size=(170, 60))
-        self.header.columnconfigure((0, 1, 2), weight=1)
-        ctk.CTkLabel(self.header, text="Excel All Task", font=("Arial", 22, "bold")).grid(row=0, column=0, padx=(20, 10), sticky="w")
-        ctk.CTkLabel(self.header, image=logo_image, text="").grid(row=0, column=1, padx=10, pady=5, sticky="nsew")
-        ctk.CTkLabel(self.header, image=alrajhi_logo_image, text="").grid(row=0, column=2, padx=10, pady=5, sticky="nsew")
-        
-        self.control_frame = ctk.CTkFrame(self.frame)
-        self.control_frame.pack(fill="x", pady=5)
+        self.header = ctk.CTkFrame(self.frame, fg_color="transparent")
+        self.header.pack(fill="x", pady=(10, 0))
+        logo_image = ctk.CTkImage(Image.open("bnm_logo.png"), size=(220, 40))
+        alrajhi_logo_image = ctk.CTkImage(Image.open("alrajhi_logo.png"), size=(120, 40))
+        ctk.CTkLabel(self.header, image=logo_image, text="").pack(side="left", padx=(10, 0))
+        ctk.CTkLabel(self.header, image=alrajhi_logo_image, text="").pack(side="right", padx=(0, 10))
 
-        self.control_frame.grid_columnconfigure(0, weight=1)
-        self.control_frame.grid_columnconfigure(1, weight=1)
-        self.control_frame.grid_columnconfigure(2, weight=1)
+        # --- Controls Row ---
+        self.control_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
+        self.control_frame.pack(fill="x", pady=(10, 0), padx=10)
 
-        # Left: Label
-        ctk.CTkLabel(
-            self.control_frame,
-            text="Excel All Task",
-            font=("Arial", 16, "bold")
-        ).grid(row=0, column=0, padx=10, sticky="w")
+        # Search bar with icon
+        search_icon = ctk.CTkImage(Image.open("search.png"), size=(20, 20))
+        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
 
-        # Center: Search bar
-        search_inner_frame = ctk.CTkFrame(self.control_frame, fg_color="transparent")
-        search_inner_frame.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-        search_inner_frame.grid_columnconfigure(0, weight=1)
-        search_inner_frame.grid_columnconfigure(1, weight=0)
-        search_inner_frame.grid_columnconfigure(2, weight=1)
+        search_entry_frame = ctk.CTkFrame(self.control_frame, fg_color="#ffffff", corner_radius=8)
+        search_entry_frame.pack(side="left", padx=(0, 10))
 
-        ctk.CTkLabel(search_inner_frame, text="Search:").grid(row=0, column=0, sticky="e", padx=(0, 5))
-        search_entry = ctk.CTkEntry(search_inner_frame, textvariable=self.search_var, width=300)
-        search_entry.grid(row=0, column=1, sticky="ew")
+        # Previous button
+        self.prev_btn = ctk.CTkButton(
+            search_entry_frame,
+            text="",
+            image=left_arrow_icon,
+            width=36,
+            height=36,
+            fg_color="transparent",
+            hover_color="#eee",
+            command=self.on_prev_match
+        )
+        self.prev_btn.pack(side="left", padx=(2, 2), pady=2)
+
+        ctk.CTkLabel(search_entry_frame, image=search_icon, text="", fg_color="transparent").pack(side="left", padx=(2, 2))
+        search_entry = ctk.CTkEntry(
+            search_entry_frame, textvariable=self.search_var, width=180, fg_color="#222222", border_width=0, font=("Segoe UI", 14)
+        )
+        search_entry.pack(side="left", padx=(0, 2), pady=4)
         search_entry.bind("<Return>", self.on_search)
         search_entry.bind("<KeyRelease>", lambda e: None)
 
-        # Right: Export button
+        # Next button
+        self.next_btn = ctk.CTkButton(
+            search_entry_frame,
+            text="",
+            image=right_arrow_icon,
+            width=36,
+            height=36,
+            fg_color="transparent",
+            hover_color="#eee",
+            command=self.on_next_match
+        )
+        self.next_btn.pack(side="left", padx=(2, 2), pady=2)
+
+        # Export button
+        export_icon = ctk.CTkImage(Image.open("export.png"), size=(20, 20))
         self.export_button = ctk.CTkButton(
             self.control_frame,
             text="Export",
-            command=self.export_data,
-            image=ctk.CTkImage(Image.open("export.png"), size=(24, 24)),
-            width=150,
-            height=40,
-            font=("Arial", 15, "bold"),
-            fg_color="transparent",
-            border_width=2,
-            corner_radius=10
+            image=export_icon,
+            width=120,
+            height=36,
+            font=("Segoe UI", 14, "bold"),
+            fg_color="#1976d2",
+            hover_color="#1565c0",
+            text_color="#fff",
+            border_width=0,
+            corner_radius=8,
+            command=self.export_data
         )
-        self.export_button.grid(row=0, column=2, padx=10, sticky="e")
-        
-        
+        self.export_button.pack(side="right", padx=(10, 0))
+
+        # --- Search navigation state ---
+        self.matching_row_ids = []
+        self.match_index = 0
+
         # --- Animated GIF Loading (rotating and small) ---
         self.loading_gif = Image.open("loading.gif")
         self.loading_frames = []
-        size = (64, 64)  # Small icon
-        for angle in range(0, 360, 30):  # 12 frames for smooth rotation
+        size = (48, 48)
+        for angle in range(0, 360, 30):
             frame = self.loading_gif.copy().resize(size, Image.LANCZOS).convert("RGBA")
             rotated = frame.rotate(angle)
             self.loading_frames.append(ctk.CTkImage(rotated, size=size))
 
         self.loading_label = ctk.CTkLabel(self.frame, text="")
         self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
-        self.loading_label.lower()  # Hide by default
+        self.loading_label.lower()
         self.loading_gif_running = False
 
-        # Define columns: PG_RQS + Task 1-8
+        # --- Table Section ---
         self.columns = ["PG_RQS"] + [f"Task {i}" for i in range(1, 9)]
+        table_frame = ctk.CTkFrame(self.frame, corner_radius=8)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Create a frame to hold the Treeview and scrollbars
-        tree_frame = ctk.CTkFrame(self.frame)
-        tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        style = ttk.Style()
+        style.configure("Modern.Treeview",
+                        font=("Segoe UI", 12),
+                        rowheight=28,
+                        background="#23272e",
+                        fieldbackground="#23272e",
+                        foreground="#ffffff")
+        style.configure("Modern.Treeview.Heading",
+                        font=("Segoe UI", 13, "bold"),
+                        background="#1976d2",
+                        foreground="#000000")  # <-- Set header text to black
+        style.layout("Modern.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
 
-        # Create the Treeview
-        self.tree = ttk.Treeview(tree_frame, columns=self.columns, show="headings", height=20)
+        self.tree = ttk.Treeview(
+            table_frame,
+            columns=self.columns,
+            show="headings",
+            height=18,
+            style="Modern.Treeview",
+            selectmode="browse"
+        )
         for col in self.columns:
             self.tree.heading(col, text=col)
-            self.tree.column(col, anchor="center", width=180, stretch=True)
+            self.tree.column(col, anchor="center", width=160, stretch=True)
         self.tree.pack(side="left", fill="both", expand=True)
 
         # Add vertical scrollbar
-        yscroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         yscroll.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=yscroll.set)
 
     def export_data(self):
-        # Ask the user for a file path
         file_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel Files", "*.xlsx")],
@@ -949,35 +985,55 @@ class ExcelAllTask:
         )
         if not file_path:
             return
-        # Create a workbook and sheet using openpyxl
         wb = Workbook()
         ws = wb.active
         ws.title = "Tasks Export"
-        # Write header
         ws.append(self.columns)
-        # Write each row from the treeview
         for row_id in self.tree.get_children():
             row_data = self.tree.item(row_id)['values']
             ws.append(row_data)
         wb.save(file_path)
         messagebox.showinfo("Export", "Export completed successfully!")
-    
+
     def on_search(self, event=None):
         query = self.search_var.get().lower()
+        self.matching_row_ids = []
+        self.match_index = 0
         if not query:
+            self.tree.selection_remove(self.tree.selection())
             return
-        # Remove any previous selection
-        self.tree.selection_remove(self.tree.selection())
-        # Search all rows for the first match in any column
+        # Find all matching rows
         for row_id in self.tree.get_children():
             row_data = self.tree.item(row_id)['values']
             if any(query in str(val).lower() for val in row_data):
-                # Highlight and scroll to the row
-                self.tree.selection_set(row_id)
-                self.tree.focus(row_id)
-                self.tree.see(row_id)
-                break
-    
+                self.matching_row_ids.append(row_id)
+        if self.matching_row_ids:
+            self.highlight_match(0)
+        else:
+            self.tree.selection_remove(self.tree.selection())
+
+    def highlight_match(self, idx):
+        # Remove previous selection
+        self.tree.selection_remove(self.tree.selection())
+        if not self.matching_row_ids:
+            return
+        idx = idx % len(self.matching_row_ids)
+        row_id = self.matching_row_ids[idx]
+        self.tree.selection_set(row_id)
+        self.tree.focus(row_id)
+        self.tree.see(row_id)
+        self.match_index = idx
+
+    def on_next_match(self):
+        if self.matching_row_ids:
+            next_idx = (self.match_index + 1) % len(self.matching_row_ids)
+            self.highlight_match(next_idx)
+
+    def on_prev_match(self):
+        if self.matching_row_ids:
+            prev_idx = (self.match_index - 1) % len(self.matching_row_ids)
+            self.highlight_match(prev_idx)
+
     def show_loading(self):
         self.loading_label.lift()
         self.loading_gif_running = True
@@ -998,43 +1054,36 @@ class ExcelAllTask:
     def show(self):
         self.frame.pack(fill="both", expand=True, padx=10, pady=10)
         self.show_loading()
-        threading.Thread(target=self.populate_grid, daemon=True).start()  # Run populate_grid in a thread
+        threading.Thread(target=self.populate_grid, daemon=True).start()
 
     def hide(self):
         self.frame.pack_forget()
 
     def populate_grid(self):
-        # Clear previous data
         for row in self.tree.get_children():
             self.tree.delete(row)
-
         global ccris_report
         excel_data = ccris_report.excel_data
-
         if "part_1" not in excel_data:
             self.hide_loading()
             return
         pg_list = pd.Series(excel_data["part_1"]["PG_RQS"].unique()).dropna().tolist()
-
         batch_size = 100
-        max_rows = 500  # or 7000 for production
+        max_rows = 500
         for start in range(0, min(max_rows, len(pg_list)), batch_size):
             end = min(start + batch_size, len(pg_list))
             for i in range(start, end):
                 pg = pg_list[i]
                 task_summaries = self.get_task_summaries_for_pg(pg, excel_data)
                 self.tree.insert("", "end", values=[pg] + task_summaries)
-            self.frame.update_idletasks()  # Update the UI after each batch
+            self.frame.update_idletasks()
         self.hide_loading()
 
-
     def get_latest_report_date(self, df_pg_part4, df_pg_part2):
-        # Try to get latest date from part_4
         if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
             date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], format="%d/%m/%Y", errors="coerce").max()
             if pd.notna(date):
                 return date
-        # Fallback: try from part_2 DT_APPL
         if not df_pg_part2.empty and "DT_APPL" in df_pg_part2.columns:
             date = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce").max()
             if pd.notna(date):
@@ -1042,7 +1091,6 @@ class ExcelAllTask:
         return None
 
     def get_task_summaries_for_pg(self, pg, excel_data):
-        # Prepare dataframes
         df_part2 = excel_data.get("part_2", pd.DataFrame())
         df_part4 = excel_data.get("part_4", pd.DataFrame())
         df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy() if not df_part2.empty else pd.DataFrame()
@@ -1071,7 +1119,7 @@ class ExcelAllTask:
                     if pending_numbers:
                         pending_numbers_str = ", ".join(str(n) for n in pending_numbers)
         task1 = f"{pending_count_last_month} (Rows: {pending_numbers_str}, Report: {report_date_str})"
-       
+
         # Task 2: CRDTCARD Outstanding
         task2 = "-"
         if "part_2" in excel_data and pg:
@@ -1083,7 +1131,7 @@ class ExcelAllTask:
             crdtcard_outstanding = df_pg_part2.loc[df_pg_part2["FCY_TYPE"] == "CRDTCARD", "IM_AM"].sum()
             if total_outstanding > 0:
                 ratio = crdtcard_outstanding / total_outstanding
-                task2 = f" {ratio:.2%}"
+                task2 = f"{ratio:.2%}"
             else:
                 task2 = "No outstanding found"
 
