@@ -883,7 +883,7 @@ class TaskTabBar:
             df_part2 = excel_data["part_2"]
             df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
             df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            unsecured = df_pg_part2[df_pg_part2["COL_TYPE"] == "0"]
+            unsecured = df_pg_part2[(df_pg_part2["COL_TYPE"] == "0") & (df_pg_part2["IM_AM"] > 0)]
             task8_count = len(unsecured)
             task8_outstanding = f"{unsecured['IM_AM'].sum():,.2f}" if not unsecured.empty else "0.00"
         task8_text = (
@@ -1052,41 +1052,63 @@ class ExcelAllTask:
         self.loading_gif_running = False
 
         # --- Table Section ---
+        # --- Table Section ---
         self.columns = ["PG_RQS"] + [f"Task {i}" for i in range(1, 9)]
         table_frame = ctk.CTkFrame(self.frame, corner_radius=8)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        style = ttk.Style()
-        style.configure("Modern.Treeview",
-                        font=("Consolas", 13),
-                        rowheight=28,
-                        background="#23272e",
-                        fieldbackground="#23272e",
-                        foreground="#ffffff")
-        style.configure("Modern.Treeview.Heading",
-                        font=("Consolas", 13),
-                        background="#1976d2",
-                        foreground="#000000")  # <-- Set header text to black
-        style.layout("Modern.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
-
+        
+        # Apply the treeview style using the current appearance mode
+        self.set_treeview_style(ctk.get_appearance_mode())
+        
+        # Create the Treeview using the "Treeview" style from above
         self.tree = ttk.Treeview(
             table_frame,
             columns=self.columns,
             show="headings",
             height=18,
-            style="Modern.Treeview",
+            style="Treeview",
             selectmode="browse"
         )
         for col in self.columns:
             self.tree.heading(col, text=col)
             self.tree.column(col, anchor="center", width=160, stretch=True)
         self.tree.pack(side="left", fill="both", expand=True)
+        
 
         # Add vertical scrollbar
         yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         yscroll.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=yscroll.set)
 
+    def set_treeview_style(self, mode):
+        style = ttk.Style()
+        # Force the treeview area to fill the widget even if empty:
+        style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+        
+        # Get theme settings from CustomTkinter's ThemeManager:
+        theme = ctk.ThemeManager.theme
+        is_dark = 1 if mode.lower() == "dark" else 0
+
+        style.configure(
+            "Treeview",
+            rowheight=theme["Treeview"].get("rowheight", 25),
+            font=("Consolas", 13),
+            background=theme["Treeview"]["background"][is_dark],
+            fieldbackground=theme["Treeview"]["background"][is_dark],
+            foreground=theme["Treeview"]["foreground"][is_dark]
+        )
+        
+        style.configure(
+            "Treeview.Heading",
+            font=("Consolas", 13),
+            background=theme["Treeview"]["heading_background"][is_dark],
+            foreground="#000000"  # header text color
+        )
+        style.map("Treeview",
+                background=[("selected", theme["Treeview"]["selected_background"][is_dark])],
+                foreground=[("selected", theme["Treeview"]["selected_foreground"][is_dark])])
+  
+    
     def export_data(self):
         file_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
@@ -1360,7 +1382,7 @@ class ExcelAllTask:
             df_part2 = excel_data["part_2"]
             df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
             df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            unsecured = df_pg_part2[df_pg_part2["COL_TYPE"] == "0"]
+            unsecured = df_pg_part2[(df_pg_part2["COL_TYPE"] == "0") & (df_pg_part2["IM_AM"] > 0)]
             count = len(unsecured)
             outstanding = f"{unsecured['IM_AM'].sum():,.2f}" if not unsecured.empty else "0.00"
             task8 = f"{count} (Outstanding: {outstanding})"
