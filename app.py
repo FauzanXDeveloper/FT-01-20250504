@@ -650,6 +650,123 @@ class CTOSReportView(ctk.CTkFrame):
                 value = child.firstChild.nodeValue.strip() if (child.firstChild and child.firstChild.nodeValue) else ""
                 self.tree.insert("", "end", values=[field, value])
                 continue
+            if tag == "tr_report":
+                if child.hasAttribute("type") and child.getAttribute("type").strip().upper() == "TR":
+                    nu_ptl = self.account_var.get() if hasattr(self, "account_var") else ""
+                    # Gather header info from <header> inside tr_report
+                    header_info = {}
+                    for header in child.getElementsByTagName("header"):
+                        for sub in header.childNodes:
+                            if sub.nodeType == sub.ELEMENT_NODE:
+                                header_info[sub.tagName.lower()] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                    # Process each enquiry within this trade reference
+                    enquiries = child.getElementsByTagName("enquiry")
+                    for idx, enq in enumerate(enquiries, start=1):
+                        # Build a flat record for this enquiry
+                        record = {}
+                        record["NU_PTL"] = nu_ptl
+                        record["Row ID"] = str(idx)
+                        record["Date"] = header_info.get("date", "")
+                        record["Req Name"] = header_info.get("req_name", "")
+                        record["Req Com Name"] = header_info.get("req_com_name", "")
+                        record["Req Com Addr"] = header_info.get("req_com_addr", "")
+                        record["Ref Com Name"] = header_info.get("ref_com_name", "")
+                        record["Ref Com Bus"] = header_info.get("ref_com_bus", "")
+                        record["Report No"] = header_info.get("report_no", "")
+                        record["IC LCNO"] = header_info.get("ic_lcno", "")
+                        record["NIC BRNO"] = header_info.get("nic_brno", "")
+                        record["Name"] = header_info.get("name", "")
+                        record["Enquiry Account No"] = enq.getAttribute("account_no") if enq.hasAttribute("account_no") else ""
+                        # Relationship
+                        rels = enq.getElementsByTagName("relationship")
+                        if rels:
+                            rel = rels[0]
+                            for data in rel.getElementsByTagName("data"):
+                                dname = data.getAttribute("name").strip().lower()
+                                text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                if dname == "rel_type":
+                                    record["Rel Type"] = text_val
+                                elif dname == "rel_status":
+                                    record["Rel Status"] = text_val
+                                elif dname == "rel_syear":
+                                    record["Rel SYear"] = text_val
+                                elif dname == "rel_smonth":
+                                    record["Rel SMonth"] = text_val
+                                elif dname == "rel_sday":
+                                    record["Rel SDay"] = text_val
+                        # Account Status
+                        accs = enq.getElementsByTagName("account_status")
+                        if accs:
+                            acc = accs[0]
+                            for data in acc.getElementsByTagName("data"):
+                                dname = data.getAttribute("name").strip().lower()
+                                text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                if dname == "statement_date":
+                                    record["Statement Date"] = text_val
+                                elif dname == "account_rating":
+                                    record["Account Rating"] = text_val
+                                elif dname == "account_term":
+                                    record["Account Term"] = text_val
+                                elif dname == "account_limit":
+                                    record["Account Limit"] = text_val
+                                elif dname == "account_status":
+                                    record["Account Status"] = text_val
+                                elif dname == "debtor_name":
+                                    record["Debtor Name"] = text_val
+                                elif dname == "debtor_ic_lcno":
+                                    record["Debtor IC LCNO"] = text_val
+                                elif dname == "debtor_nic_brno":
+                                    record["Debtor NIC BRNO"] = text_val
+                                elif dname == "address":
+                                    record["Address"] = text_val
+                                elif dname == "debt_type":
+                                    record["Debt Type"] = text_val
+                            # Age breakdown
+                            age_elements = acc.getElementsByTagName("age")
+                            if age_elements:
+                                age_elem = age_elements[0]
+                                for item in age_elem.getElementsByTagName("item"):
+                                    age_name = item.getAttribute("name") if item.hasAttribute("name") else ""
+                                    age_value = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    if age_name:
+                                        record[f"Age {age_name}"] = age_value
+                        # Contact
+                        contacts = enq.getElementsByTagName("contact")
+                        if contacts:
+                            contact = contacts[0]
+                            for data in contact.getElementsByTagName("data"):
+                                dname = data.getAttribute("name").strip().lower()
+                                text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                if dname == "reference":
+                                    record["Contact Reference"] = text_val
+                                elif dname == "name":
+                                    record["Contact Name"] = text_val
+                                elif dname == "address":
+                                    record["Contact Address"] = text_val
+                                elif dname == "tel_no":
+                                    record["Contact Tel No"] = text_val
+                                elif dname == "fax_no":
+                                    record["Contact Fax No"] = text_val
+                                elif dname == "email":
+                                    record["Contact Email"] = text_val
+                                elif dname == "type":
+                                    record["Contact Type"] = text_val
+                                elif dname == "type_code":
+                                    record["Contact Type Code"] = text_val
+                        # Insert as a flat field/value list under a parent node
+                        parent_label = f"Trade Reference: {record.get('Name','')} | {record.get('Date','')}"
+                        parent_node = self.tree.insert(parent_path, "end", values=[parent_label, ""])
+                        for field in [
+                            "NU_PTL", "Row ID", "Date", "Req Name", "Req Com Name", "Req Com Addr", "Ref Com Name", "Ref Com Bus",
+                            "Report No", "IC LCNO", "NIC BRNO", "Name", "Enquiry Account No", "Rel Type", "Rel Status", "Rel SYear",
+                            "Rel SMonth", "Rel SDay", "Statement Date", "Account Rating", "Account Term", "Account Limit",
+                            "Account Status", "Debtor Name", "Debtor IC LCNO", "Debtor NIC BRNO", "Address", "Debt Type",
+                            "Age 30", "Age 60", "Age 90", "Age 120", "Age 150", "Age 180", "Age 210",
+                            "Contact Reference", "Contact Name", "Contact Address", "Contact Tel No", "Contact Fax No",
+                            "Contact Email", "Contact Type", "Contact Type Code"
+                        ]:
+                            self.tree.insert(parent_node, "end", values=[field, record.get(field, "")])
+                    continue
 
             # --- New CTOS XML logic below ---
 
@@ -1340,7 +1457,7 @@ class CTOSReportView(ctk.CTkFrame):
         # Removed: self.popup.update()  # <-- Avoid explicit update call here
         
     def convert_to_excel_thread(self):
-        # Define columns for old CTOS only
+        # Define columns for old CTOS sections
         old_section_columns = {
             "Header&Summary": ["NU_PTL", "user", "company", "account", "tel", "fax", "enq_date", "enq_time", "enq_status", "IC_LCNO", "NIC_BRNO", "NAME", "ALIAS", "STAT", "REF"],
             "Section-A": ["NU_PTL", "Record_ID", "ICNO", "MATCH", "NEWIC", "MATCH1", "NAME", "MATCH2", "ADDR", "ADDR1", "REMARK"],
@@ -1349,14 +1466,28 @@ class CTOSReportView(ctk.CTkFrame):
             "Section-D": ["NU_PTL", "Record_ID", "ZTITLE", "ZSPECIAL", "NAME", "MATCH", "ALIAS", "I/C NO", "NEW IC", "REMARK", "ADDRESS", "FIRM", "PLAINTIFF", "CASE NO", "ZCOURT", "ACTION DATE", "ZNTPAP", "HEARING DATE", "AMOUNT", "SOLCTR", "LAWADD1", "TEL", "LAWADD2", "REF", "LAWADD3", "PLAINTIFF CONTACT", "CEDCONADD1", "CEDCONADD2", "CEDCONADD3"],
             "Section-E": ["NU_PTL", "Record_ID", "REFEREE", "INCORPORATION DATE", "NATURE OF BUSINESS", "ADDRESS", "TR_URL"]
         }
+        # Define header for new Trade Reference sheet (horizontal)
+        trade_reference_columns = [
+            "NU_PTL", "Row ID", "Date", "Req Name", "Req Com Name", "Req Com Addr", "Ref Com Name", "Ref Com Bus",
+            "Report No", "IC LCNO", "NIC BRNO", "Name", "Enquiry Account No", "Rel Type",
+            "Rel Status", "Rel SYear", "Rel SMonth", "Rel SDay", "Statement Date", "Account Rating",
+            "Account Term", "Account Limit", "Account Status", "Debtor Name", "Debtor IC LCNO",
+            "Debtor NIC BRNO", "Address", "Debt Type"
+        ]
+        # Extend additional fields for ages and contact details
+        full_trade_reference_columns = trade_reference_columns + [
+            "Age 30", "Age 60", "Age 90", "Age 120", "Age 150", "Age 180", "Age 210",
+            "Contact Reference", "Contact Name", "Contact Address", "Contact Tel No", "Contact Fax No", "Contact Email", "Contact Type", "Contact Type Code"
+        ]
 
+        # Initialize data storage for old sections and trade reference records
         old_sheets_data = {k: [] for k in old_section_columns}
+        trade_reference_data = []  # Will store each trade reference record separately
         total = len(self.filtered_data)
 
         for index, (_, row) in enumerate(self.filtered_data.iterrows()):
             nu_ptl = row.get("NU_PTL", f"Row{index}")
             xml_data = clean_malformed_xml(row.get("XML", ""))
-
             if pd.isna(xml_data) or not str(xml_data).strip():
                 continue
 
@@ -1364,7 +1495,7 @@ class CTOSReportView(ctk.CTkFrame):
                 dom = xml.dom.minidom.parseString(xml_data)
                 root = dom.documentElement
 
-                # Extract Header&Summary
+                # --- Extract Header&Summary ---
                 header_record = {col: "" for col in old_section_columns["Header&Summary"]}
                 header_record["NU_PTL"] = nu_ptl
                 for header in root.getElementsByTagName("header"):
@@ -1383,10 +1514,10 @@ class CTOSReportView(ctk.CTkFrame):
                                     header_record[field] = value
                 old_sheets_data["Header&Summary"].append(header_record)
 
-                # Extract each section
+                # --- Extract Sections A, B, C, D, E ---
                 for section in root.getElementsByTagName("section"):
-                    section_id = section.getAttribute("id").strip().upper()
-                    section_key = f"Section-{section_id}"
+                    sec_id = section.getAttribute("id").strip().upper()
+                    section_key = f"Section-{sec_id}"
                     if section_key not in old_sheets_data:
                         continue
                     for rec in section.getElementsByTagName("record"):
@@ -1415,6 +1546,150 @@ class CTOSReportView(ctk.CTkFrame):
                                 record[matched_field] = value
                         old_sheets_data[section_key].append(record)
 
+                # --- Extract Trade Reference Records ---
+                # Process each <tr_report> element with type="TR"
+                for tr_report in root.getElementsByTagName("tr_report"):
+                    if tr_report.hasAttribute("type") and tr_report.getAttribute("type").strip().upper() == "TR":
+                        # Gather header info from tr_report
+                        header_info = {}
+                        for header in tr_report.getElementsByTagName("header"):
+                            for node in header.childNodes:
+                                if node.nodeType == node.ELEMENT_NODE:
+                                    tag = node.tagName.strip().lower()
+                                    text_val = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                                    header_info[tag] = text_val
+                        # Process each enquiry element under this tr_report.
+                        # If there are enquiries, output one row per enquiry and add a Row ID.
+                        enquiries = tr_report.getElementsByTagName("enquiry")
+                        row_id_counter = 1
+                        if enquiries:
+                            for enq in enquiries:
+                                trade_record = {col: "" for col in full_trade_reference_columns}
+                                trade_record["NU_PTL"] = nu_ptl
+                                trade_record["Row ID"] = str(row_id_counter)
+                                row_id_counter += 1
+                                # Populate header fields
+                                trade_record["Date"] = header_info.get("date", "")
+                                trade_record["Req Name"] = header_info.get("req_name", "")
+                                trade_record["Req Com Name"] = header_info.get("req_com_name", "")
+                                trade_record["Req Com Addr"] = header_info.get("req_com_addr", "")
+                                trade_record["Ref Com Name"] = header_info.get("ref_com_name", "")
+                                trade_record["Ref Com Bus"] = header_info.get("ref_com_bus", "")
+                                trade_record["Report No"] = header_info.get("report_no", "")
+                                trade_record["IC LCNO"] = header_info.get("ic_lcno", "")
+                                trade_record["NIC BRNO"] = header_info.get("nic_brno", "")
+                                trade_record["Name"] = header_info.get("name", "")
+                                
+                                # Enquiry attribute: Account Number
+                                if enq.hasAttribute("account_no"):
+                                    trade_record["Enquiry Account No"] = enq.getAttribute("account_no").strip()
+                                # Relationship section
+                                rels = enq.getElementsByTagName("relationship")
+                                if rels:
+                                    rel = rels[0]
+                                    for data in rel.getElementsByTagName("data"):
+                                        dname = data.getAttribute("name").strip().lower()
+                                        text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                        if dname == "rel_type":
+                                            trade_record["Rel Type"] = text_val
+                                        elif dname == "rel_status":
+                                            trade_record["Rel Status"] = text_val
+                                        elif dname == "rel_syear":
+                                            trade_record["Rel SYear"] = text_val
+                                        elif dname == "rel_smonth":
+                                            trade_record["Rel SMonth"] = text_val
+                                        elif dname == "rel_sday":
+                                            trade_record["Rel SDay"] = text_val
+                                # Account_status section (if present)
+                                accs = enq.getElementsByTagName("account_status")
+                                if accs:
+                                    acc = accs[0]
+                                    for data in acc.getElementsByTagName("data"):
+                                        dname = data.getAttribute("name").strip().lower()
+                                        text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                        if dname == "statement_date":
+                                            trade_record["Statement Date"] = text_val
+                                        elif dname == "account_rating":
+                                            trade_record["Account Rating"] = text_val
+                                        elif dname == "account_term":
+                                            trade_record["Account Term"] = text_val
+                                        elif dname == "account_limit":
+                                            trade_record["Account Limit"] = text_val
+                                        elif dname == "account_status":
+                                            trade_record["Account Status"] = text_val
+                                        elif dname == "debtor_name":
+                                            trade_record["Debtor Name"] = text_val
+                                        elif dname == "debtor_ic_lcno":
+                                            trade_record["Debtor IC LCNO"] = text_val
+                                        elif dname == "debtor_nic_brno":
+                                            trade_record["Debtor NIC BRNO"] = text_val
+                                        elif dname == "address":
+                                            trade_record["Address"] = text_val
+                                        elif dname == "debt_type":
+                                            trade_record["Debt Type"] = text_val
+                                    # Process ages within <age> element if present
+                                    age_elements = acc.getElementsByTagName("age")
+                                    if age_elements:
+                                        age_elem = age_elements[0]
+                                        for age_item in age_elem.childNodes:
+                                            if age_item.nodeType == age_item.ELEMENT_NODE:
+                                                age_tag = age_item.tagName.strip().lower()
+                                                value = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                if age_tag == "30":
+                                                    trade_record["Age 30"] = value
+                                                elif age_tag == "60":
+                                                    trade_record["Age 60"] = value
+                                                elif age_tag == "90":
+                                                    trade_record["Age 90"] = value
+                                                elif age_tag == "120":
+                                                    trade_record["Age 120"] = value
+                                                elif age_tag == "150":
+                                                    trade_record["Age 150"] = value
+                                                elif age_tag == "180":
+                                                    trade_record["Age 180"] = value
+                                                elif age_tag == "210":
+                                                    trade_record["Age 210"] = value
+                                # Contact section
+                                contacts = enq.getElementsByTagName("contact")
+                                if contacts:
+                                    contact = contacts[0]
+                                    for data in contact.getElementsByTagName("data"):
+                                        dname = data.getAttribute("name").strip().lower()
+                                        text_val = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                        if dname == "reference":
+                                            trade_record["Contact Reference"] = text_val
+                                        elif dname == "name":
+                                            trade_record["Contact Name"] = text_val
+                                        elif dname == "address":
+                                            trade_record["Contact Address"] = text_val
+                                        elif dname == "tel_no":
+                                            trade_record["Contact Tel No"] = text_val
+                                        elif dname == "fax_no":
+                                            trade_record["Contact Fax No"] = text_val
+                                        elif dname == "email":
+                                            trade_record["Contact Email"] = text_val
+                                        elif dname == "type":
+                                            trade_record["Contact Type"] = text_val
+                                        elif dname == "type_code":
+                                            trade_record["Contact Type Code"] = text_val
+                                trade_reference_data.append(trade_record)
+                        else:
+                            # If no enquiry exists, output one record with header info only.
+                            trade_record = {col: "" for col in full_trade_reference_columns}
+                            trade_record["NU_PTL"] = nu_ptl
+                            trade_record["Row ID"] = "1"
+                            trade_record["Date"] = header_info.get("date", "")
+                            trade_record["Req Name"] = header_info.get("req_name", "")
+                            trade_record["Req Com Name"] = header_info.get("req_com_name", "")
+                            trade_record["Req Com Addr"] = header_info.get("req_com_addr", "")
+                            trade_record["Ref Com Name"] = header_info.get("ref_com_name", "")
+                            trade_record["Ref Com Bus"] = header_info.get("ref_com_bus", "")
+                            trade_record["Report No"] = header_info.get("report_no", "")
+                            trade_record["IC LCNO"] = header_info.get("ic_lcno", "")
+                            trade_record["NIC BRNO"] = header_info.get("nic_brno", "")
+                            trade_record["Name"] = header_info.get("name", "")
+                            trade_reference_data.append(trade_record)
+
             except Exception as e:
                 msg = f"Error parsing XML for NU_PTL {nu_ptl}: {str(e)}"
                 self.after(0, self.append_error, msg)
@@ -1424,23 +1699,27 @@ class CTOSReportView(ctk.CTkFrame):
                 progress = (index + 1) / total
                 self.after(0, self.update_progress, progress, index + 1, total)
 
-        # Export to Excel
+        # --- Export to Excel ---
         self.after(0, self.update_status, "Writing to Excel...")
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
         old_save_path = os.path.join(downloads_folder, f"old_ctos_report_{timestamp}.xlsx")
 
-        if any(len(records) > 0 for records in old_sheets_data.values()):
-            with pd.ExcelWriter(old_save_path, engine="openpyxl") as writer:
-                for sheet_name, records in old_sheets_data.items():
-                    if records:
-                        df = pd.DataFrame(records)
-                        df = df.reindex(columns=old_section_columns[sheet_name])
-                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        with pd.ExcelWriter(old_save_path, engine="openpyxl") as writer:
+            # Write old CTOS sheets
+            for sheet_name, records in old_sheets_data.items():
+                if records:
+                    df = pd.DataFrame(records)
+                    df = df.reindex(columns=old_section_columns[sheet_name])
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            # Write Trade Reference sheet if any records were found
+            if trade_reference_data:
+                df_tr = pd.DataFrame(trade_reference_data)
+                df_tr = df_tr.reindex(columns=full_trade_reference_columns)
+                df_tr.to_excel(writer, sheet_name="Trade Reference", index=False)
 
         self.after(0, self.update_status, "Export successful!")
         self.after(0, self.destroy_popup)
-
 
     def append_error(self, msg):
         if hasattr(self, "error_textbox"):
