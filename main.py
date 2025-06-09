@@ -15,11 +15,10 @@ from openpyxl import Workbook
 from tkinter import ttk, messagebox
 
 
-ctk.set_default_color_theme("Themes/breeze.json")
+ctk.set_default_color_theme("Themes/extreme.json")
 ctk.set_appearance_mode("dark")
  
 app = ctk.CTk()
-app.iconbitmap("ccris.ico")
 app.title("CCRIS Credit Report")
 app.geometry("1800x900")
 
@@ -47,7 +46,7 @@ sidebar.pack(side="left", fill="y")
 sidebar.pack_propagate(False)  # Prevent auto-resize
 
 # Hamburger Button (always at top left of sidebar)
-hamburger_img = ctk.CTkImage(Image.open("hamburger.png"), size=(24, 24))
+hamburger_img = ctk.CTkImage(Image.open("Picture/hamburger.png"), size=(24, 24))
 hamburger_btn = ctk.CTkButton(
     sidebar,
     text="",
@@ -166,8 +165,8 @@ toggle_setting_frame.pack(fill="x", pady=5)
 
 # Load icons (if not already loaded)
 try:
-    dark_icon = ctk.CTkImage(Image.open("dark_mode_icon.png"), size=(24, 24))
-    light_icon = ctk.CTkImage(Image.open("light_mode_icon.png"), size=(24, 24))
+    dark_icon = ctk.CTkImage(Image.open("Picture/dark_mode_icon.png"), size=(24, 24))
+    light_icon = ctk.CTkImage(Image.open("Picture/light_mode_icon.png"), size=(24, 24))
 except Exception as e:
     print(f"Error loading toggle icons: {e}")
     dark_icon = None
@@ -235,7 +234,7 @@ class CCRISReport:
         self.task_tab = TaskTabBar(self.outer_frame)
         
         # --- Loading Overlay ---
-        self.loading_gif = Image.open("loading.gif")
+        self.loading_gif = Image.open("Picture/loading.gif")
         self.loading_frames = []
         size = (64, 64)
         for angle in range(0, 360, 30):
@@ -274,8 +273,8 @@ class CCRISReport:
         # Header
         self.header = ctk.CTkFrame(self.frame)
         self.header.pack(fill="x", pady=10)
-        logo_image = ctk.CTkImage(Image.open("bnm_logo.png"), size=(300, 56))
-        alrajhi_logo_image = ctk.CTkImage(Image.open("alrajhi_logo.png"), size=(170, 60))
+        logo_image = ctk.CTkImage(Image.open("Picture/bnm_logo.png"), size=(300, 56))
+        alrajhi_logo_image = ctk.CTkImage(Image.open("Picture/alrajhi_logo.png"), size=(170, 60))
         self.header.columnconfigure((0, 1, 2), weight=1)
         ctk.CTkLabel(self.header, image=logo_image, text="").grid(row=0, column=1, padx=10, pady=5, sticky="nsew")
         ctk.CTkLabel(self.header, text="CREDIT REPORT", font=("Arial", 22, "bold")).grid(row=0, column=0, padx=(20, 10), sticky="w")
@@ -291,7 +290,7 @@ class CCRISReport:
         self.control_frame.grid_columnconfigure(1, weight=2)  # Navigation controls column
         self.control_frame.grid_columnconfigure(2, weight=1)  # (optional extra spacer)
 
-        import_icon = ctk.CTkImage(Image.open("importing.png"), size=(24, 24))
+        import_icon = ctk.CTkImage(Image.open("Picture/importing.png"), size=(24, 24))
         
         # Import button (placed at left)
         self.import_button = ctk.CTkButton(self.control_frame, text="Import CCRIS Excel", image=import_icon ,command=self.load_excel)
@@ -307,8 +306,8 @@ class CCRISReport:
         nav_frame.grid_columnconfigure(2, weight=1)  # right spacer
 
         # Load arrow icons
-        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
-        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+        left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
 
         # Previous Button in left column (aligned to right)
         self.prev_btn = ctk.CTkButton(
@@ -324,7 +323,7 @@ class CCRISReport:
         # Combobox in center column
         self.selected_pg_rqs = ctk.StringVar()
         style = ttk.Style()
-        style.configure("Custom.TCombobox", font=("Arial", 16))
+        style.configure("Custom.TCombobox", font=("Consolas", 15, "bold"))
         self.pg_dropdown = ttk.Combobox(nav_frame,
                                         textvariable=self.selected_pg_rqs,
                                         width=25,
@@ -358,15 +357,15 @@ class CCRISReport:
  
         
         # Outstanding Credit
-        ctk.CTkLabel(self.table_section, text="Outstanding Credit", font=("Arial", 14, "bold")).pack(anchor="w")
+        ctk.CTkLabel(self.table_section, text="Outstanding Credit", font=("Consolas", 14, "bold")).pack(anchor="w")
         self.outstanding_tree = self.create_table(self.table_section, self.outstanding_cols, height=6)
  
         # Special Attention
-        ctk.CTkLabel(self.table_section, text="Special Attention Account", font=("Arial", 14, "bold")).pack(anchor="w")
+        ctk.CTkLabel(self.table_section, text="Special Attention Account", font=("Consolas", 14, "bold")).pack(anchor="w")
         self.attention_tree = self.create_table(self.table_section, self.outstanding_cols, height=4)
  
         # Application for Credit
-        ctk.CTkLabel(self.table_section, text="Application for Credit", font=("Arial", 14, "bold")).pack(anchor="w")
+        ctk.CTkLabel(self.table_section, text="Application for Credit", font=("Consolas", 14, "bold")).pack(anchor="w")
         self.application_tree = self.create_table(self.table_section, self.outstanding_cols, height=4)
  
         # Data
@@ -582,13 +581,13 @@ class CCRISReport:
         
         style.configure("Treeview",
                         rowheight=theme["Treeview"].get("rowheight", 25),
-                        font=("Segoe UI", 11),
+                        font=("Consolas", 13),
                         background=theme["Treeview"]["background"][is_dark],
                         fieldbackground=theme["Treeview"]["background"][is_dark],
                         foreground=theme["Treeview"]["foreground"][is_dark])
         
         style.configure("Treeview.Heading",
-                        font=("Segoe UI", 11, "bold"),
+                        font=("Consolas", 13),
                         background=theme["Treeview"]["heading_background"][is_dark],
                         foreground="#000000")  # Set header text to black
         
@@ -599,12 +598,31 @@ class CCRISReport:
 class TaskTabBar:
     def __init__(self, parent):
         self.parent = parent
-        self.frame = ctk.CTkFrame(parent)
-        self.frame.pack(side="bottom", fill="x", pady=(0, 0))
         self.visible = False
+        self.animating = False
+        self.min_height = 40
+        self.default_height = 320
+        self.max_height = 600
+        self.current_height = self.default_height
+        self.last_height = self.default_height
+        self.resizing = False
+        self.start_y = 0
 
-        # Tab bar (always visible, at the top of the panel)
-        self.tab_bar = ctk.CTkFrame(self.frame)
+        # --- Main panel frame ---
+        self.frame = ctk.CTkFrame(parent, fg_color="#23272e", corner_radius=10)
+        self.frame.pack(side="bottom", fill="x")
+        self.frame.configure(height=self.default_height)
+        self.frame.pack_propagate(False)
+
+        # --- Grip bar for resizing ---
+        self.grip = ctk.CTkFrame(self.frame, height=8, fg_color="#444", cursor="sb_v_double_arrow")
+        self.grip.pack(fill="x", side="top")
+        self.grip.bind("<ButtonPress-1>", self.start_resize)
+        self.grip.bind("<B1-Motion>", self.perform_resize)
+        self.grip.bind("<Double-Button-1>", self.toggle_minimize)
+
+        # --- Tab bar (always visible) ---
+        self.tab_bar = ctk.CTkFrame(self.frame, fg_color="#23272e")
         self.tab_bar.pack(fill="x", side="top")
         self.task_btn = ctk.CTkButton(
             self.tab_bar,
@@ -620,7 +638,7 @@ class TaskTabBar:
         )
         self.task_btn.pack(side="left", padx=(0, 2), pady=0)
 
-        close_icon = ctk.CTkImage(Image.open("close.png"), size=(24, 24))
+        close_icon = ctk.CTkImage(Image.open("Picture/close.png"), size=(24, 24))
         self.close_btn = ctk.CTkButton(
             self.tab_bar,
             text="",
@@ -634,22 +652,24 @@ class TaskTabBar:
         )
         self.close_btn.pack(side="right", padx=(4, 8), pady=0)
 
-        # Content area (hidden by default)
+        # --- Content area (hidden by default) ---
+        self.content_frame = ctk.CTkFrame(self.frame, fg_color="#1e1e1e")
         self.content_label = ctk.CTkLabel(
-            self.frame,
+            self.content_frame,
             text="",
-            font=("Arial", 15),
-            anchor="w",
-            justify="left"
+            font=("Consolas", 13),
+            anchor="nw",
+            justify="left",
+            text_color="#d4d4d4"
         )
 
-        # For animation
-        self.animating = False
-        self.target_height = 320  # Adjust as needed
-
-        # These will be set by the parent before showing
+        # For data
         self.excel_data = None
         self.pg = None
+
+        # Set initial height
+        self.set_panel_height(self.default_height)
+        self.hide_content()
 
     def set_data(self, excel_data, pg):
         self.excel_data = excel_data
@@ -658,6 +678,7 @@ class TaskTabBar:
     def _on_show(self):
         if self.excel_data is not None and self.pg is not None:
             self.show_content(self.excel_data, self.pg)
+            self.animate_panel_height(self.current_height, self.max_height, duration=200)  # Animate open
 
     def show_content(self, excel_data, pg):
         # --- Build calculation text ---
@@ -697,22 +718,66 @@ class TaskTabBar:
             f"Report Date: {report_date_str}\n"
         )
 
-        # --- Task 2: CRDTCARD Outstanding Ratio ---
+        # Task 2: CRDTCARD Outstanding
         task2_result = "-"
-        task2_text = "Task 2:\nCRDTCARD Outstanding : -\n"
+        task2_text = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
             df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce")
-            total_outstanding = df_pg_part2["IM_LIM_AM"].sum()
-            crdtcard_outstanding = df_pg_part2.loc[df_pg_part2["FCY_TYPE"] == "CRDTCARD", "IM_AM"].sum()
-            if total_outstanding > 0:
-                ratio = crdtcard_outstanding / total_outstanding
+            df_pg_part2["FCY_TYPE"] = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper()
+            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
+            df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
+            df_pg_part2 = df_pg_part2.reset_index(drop=True)
+
+            # Find all CRDTCARD rows (these have the outstanding)
+            crdtcard_rows = df_pg_part2[df_pg_part2["FCY_TYPE"] == "CRDTCARD"]
+            crdtcard_outstanding = crdtcard_rows["IM_AM"].sum()
+
+            # For each CRDTCARD row, find the nearest previous row with approval date and take its limit
+            used_approval_dates = set()
+            total_limit = 0
+            for idx in crdtcard_rows.index:
+                found_limit = 0
+                found_date = None
+                for prev_idx in range(idx, -1, -1):
+                    appr_date = str(df_pg_part2.loc[prev_idx, "DT_APPL"]).strip()
+                    if appr_date not in ["-", "", "NaN", "nan"] and pd.notna(appr_date):
+                        found_date = appr_date
+                        found_limit = df_pg_part2.loc[prev_idx, "IM_LIM_AM"]
+                        break
+                # Only add the limit if this approval date hasn't been used yet
+                if found_date and found_date not in used_approval_dates:
+                    total_limit += found_limit
+                    used_approval_dates.add(found_date)
+
+            if total_limit > 0:
+                ratio = crdtcard_outstanding / total_limit
                 task2_result = f"{ratio:.2%}"
             else:
                 task2_result = "No outstanding found"
             task2_text = f"Task 2:\nCRDTCARD Outstanding : {task2_result}\n"
+        
+        task3_result = "-"
+        task3_text = "Task 3:\nCCRISCard Age : -\n"
+        if "part_2" in excel_data and pg:
+            df_part2 = excel_data["part_2"]
+            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            # Get the earliest (min) date
+            if not df_pg_part2["DT_APPL"].isna().all():
+                earliest_date = df_pg_part2["DT_APPL"].min()
+                # Get report date from part_4 if available
+                report_date = "-"
+                if "part_4" in excel_data:
+                    df_part4 = excel_data["part_4"]
+                    df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                    if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
+                        latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
+                        if pd.notna(latest_report_date):
+                            report_date = latest_report_date.strftime("%d-%m-%Y")
+                task3_result = f"earliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}"
+                task3_text = f"Task 3:\n-CCRISCard Age :\nearliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}\n"
+            
 
         # --- Task 4: Number of unsecured facilities in last 12 months ---
         task4_result = "-"
@@ -767,6 +832,33 @@ class TaskTabBar:
             f"Number of unsecured facilities in last 18 months: {task5_result}\n"
             f"Row No: {task5_rows}\n"
         )
+        
+        task6_result = "-"
+        task6_text = "Task 6:\nThin Ccris : -\n"
+        if "part_2" in excel_data and pg:
+            df_part2 = excel_data["part_2"]
+            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            # a. Calculate months between earliest date and report date
+            earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
+            report_date = None
+            if "part_4" in excel_data:
+                df_part4 = excel_data["part_4"]
+                df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
+                    latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
+                    if pd.notna(latest_report_date):
+                        report_date = latest_report_date
+            # Calculate months difference
+            months_diff = "-"
+            if earliest_date is not None and report_date is not None:
+                months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
+            # b. Only 1 facility?
+            only_one_facility = "No"
+            if df_pg_part2["FCY_TYPE"].nunique() == 1:
+                only_one_facility = "Yes"
+            task6_result = f"a. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}"
+            task6_text = f"Task 6:\nTHIN CCRIS :\na. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}\n"
 
         # --- Task 7: Secured financing (Collateral ≠ 0) ---
         task7_count = "-"
@@ -800,49 +892,67 @@ class TaskTabBar:
             f"b. Total outstanding: {task8_outstanding}\n"
         )
 
-        all_tasks_text = f"{task1_text}\n{task2_text}\n{task4_text}\n{task5_text}\n{task7_text}\n{task8_text}"
+        all_tasks_text = f"{task1_text}\n{task2_text}\n{task3_text}\n{task4_text}\n{task5_text}\n{task6_text}\n{task7_text}\n{task8_text}"
         self.content_label.configure(text=all_tasks_text)
+
+        # Show content area if not visible
         if not self.visible:
-            self.content_label.pack(fill="both", padx=10, pady=10, side="top")
-            self.content_label.update_idletasks()
-            self.content_label.configure(height=0)
+            self.content_frame.pack(fill="both", expand=True, padx=0, pady=(0, 0), side="top")
+            self.content_label.pack(fill="both", expand=True, padx=16, pady=12, side="top")
             self.visible = True
-            self.animate_show()
+            self.set_panel_height(self.current_height)
 
     def hide_content(self):
         self.content_label.pack_forget()
+        self.content_frame.pack_forget()
         self.visible = False
         self.animating = False
+        self.animate_panel_height(self.current_height, self.min_height, duration=200)  # Animate close
 
-    def animate_show(self):
-        self.animating = True
-        step = 32
-        max_height = self.target_height
-        def grow():
-            h = self.content_label.winfo_height()
-            if h < max_height:
-                h = min(h + step, max_height)
-                self.content_label.configure(height=h)
-                self.frame.after(10, grow)
-            else:
-                self.content_label.configure(height=max_height)
-                self.animating = False
-        grow()
+    def set_panel_height(self, height):
+        height = max(self.min_height, min(self.max_height, int(height)))
+        self.current_height = height
+        self.frame.configure(height=height)
+        self.frame.pack_propagate(False)
 
-    def animate_hide(self):
+    def animate_panel_height(self, start, end, duration=200):
+        if int(start) == int(end):
+            self.set_panel_height(end)
+            return
+        steps = max(6, int(abs(end - start) / 30))
+        delay = max(15, int(duration / steps))
+        delta = (end - start) / steps
         self.animating = True
-        step = 32
-        def shrink():
-            h = self.content_label.winfo_height()
-            if h > 0:
-                h = max(h - step, 0)
-                self.content_label.configure(height=h)
-                self.frame.after(10, shrink)
+
+        def step(i=0):
+            if i < steps:
+                self.set_panel_height(start + delta * i)
+                self.frame.update_idletasks()
+                self.frame.after(delay, lambda: step(i + 1))
             else:
-                self.content_label.pack_forget()
-                self.visible = False
+                self.set_panel_height(end)
                 self.animating = False
-        shrink()
+
+        step()
+
+    def start_resize(self, event):
+        self.resizing = True
+        self.start_y = event.y_root
+        self.orig_height = self.current_height
+
+    def perform_resize(self, event):
+        if self.resizing:
+            delta = self.start_y - event.y_root
+            new_height = self.orig_height + delta
+            if int(new_height) != int(self.current_height):
+                self.set_panel_height(new_height)
+
+    def toggle_minimize(self, event):
+        if self.current_height > self.min_height + 10:
+            self.last_height = self.current_height
+            self.animate_panel_height(self.current_height, self.min_height, duration=200)
+        else:
+            self.animate_panel_height(self.current_height, self.last_height, duration=200)
 
 class ExcelAllTask:
     def __init__(self, parent):
@@ -854,8 +964,8 @@ class ExcelAllTask:
         # --- Header (with logos) ---
         self.header = ctk.CTkFrame(self.frame, fg_color="transparent")
         self.header.pack(fill="x", pady=(10, 0))
-        logo_image = ctk.CTkImage(Image.open("bnm_logo.png"), size=(220, 40))
-        alrajhi_logo_image = ctk.CTkImage(Image.open("alrajhi_logo.png"), size=(120, 40))
+        logo_image = ctk.CTkImage(Image.open("Picture/bnm_logo.png"), size=(220, 40))
+        alrajhi_logo_image = ctk.CTkImage(Image.open("Picture/alrajhi_logo.png"), size=(120, 40))
         ctk.CTkLabel(self.header, image=logo_image, text="").pack(side="left", padx=(10, 0))
         ctk.CTkLabel(self.header, image=alrajhi_logo_image, text="").pack(side="right", padx=(0, 10))
 
@@ -864,9 +974,9 @@ class ExcelAllTask:
         self.control_frame.pack(fill="x", pady=(10, 0), padx=10)
 
         # Search bar with icon
-        search_icon = ctk.CTkImage(Image.open("search.png"), size=(20, 20))
-        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
-        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+        search_icon = ctk.CTkImage(Image.open("Picture/search.png"), size=(20, 20))
+        left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
 
         search_entry_frame = ctk.CTkFrame(self.control_frame, fg_color="#ffffff", corner_radius=8)
         search_entry_frame.pack(side="left", padx=(0, 10))
@@ -906,7 +1016,7 @@ class ExcelAllTask:
         self.next_btn.pack(side="left", padx=(2, 2), pady=2)
 
         # Export button
-        export_icon = ctk.CTkImage(Image.open("export.png"), size=(20, 20))
+        export_icon = ctk.CTkImage(Image.open("Picture/export.png"), size=(20, 20))
         self.export_button = ctk.CTkButton(
             self.control_frame,
             text="Export",
@@ -928,7 +1038,7 @@ class ExcelAllTask:
         self.match_index = 0
 
         # --- Animated GIF Loading (rotating and small) ---
-        self.loading_gif = Image.open("loading.gif")
+        self.loading_gif = Image.open("Picture/loading.gif")
         self.loading_frames = []
         size = (48, 48)
         for angle in range(0, 360, 30):
@@ -948,13 +1058,13 @@ class ExcelAllTask:
 
         style = ttk.Style()
         style.configure("Modern.Treeview",
-                        font=("Segoe UI", 12),
+                        font=("Consolas", 13),
                         rowheight=28,
                         background="#23272e",
                         fieldbackground="#23272e",
                         foreground="#ffffff")
         style.configure("Modern.Treeview.Heading",
-                        font=("Segoe UI", 13, "bold"),
+                        font=("Consolas", 13),
                         background="#1976d2",
                         foreground="#000000")  # <-- Set header text to black
         style.layout("Modern.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
@@ -1120,31 +1230,62 @@ class ExcelAllTask:
                         pending_numbers_str = ", ".join(str(n) for n in pending_numbers)
         task1 = f"{pending_count_last_month} (Rows: {pending_numbers_str}, Report: {report_date_str})"
 
-        # Task 2: CRDTCARD Outstanding
+        # Task 2: CRDTCARD Outstanding (new logic)
         task2 = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
             df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce")
-            total_outstanding = df_pg_part2["IM_LIM_AM"].sum()
-            crdtcard_outstanding = df_pg_part2.loc[df_pg_part2["FCY_TYPE"] == "CRDTCARD", "IM_AM"].sum()
-            if total_outstanding > 0:
-                ratio = crdtcard_outstanding / total_outstanding
+            df_pg_part2["FCY_TYPE"] = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper()
+            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
+            df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
+            df_pg_part2 = df_pg_part2.reset_index(drop=True)
+
+            # Find all CRDTCARD rows (these have the outstanding)
+            crdtcard_rows = df_pg_part2[df_pg_part2["FCY_TYPE"] == "CRDTCARD"]
+            crdtcard_outstanding = crdtcard_rows["IM_AM"].sum()
+
+            # For each CRDTCARD row, find the nearest previous row with approval date and take its limit
+            used_approval_dates = set()
+            total_limit = 0
+            for idx in crdtcard_rows.index:
+                found_limit = 0
+                found_date = None
+                for prev_idx in range(idx, -1, -1):
+                    appr_date = str(df_pg_part2.loc[prev_idx, "DT_APPL"]).strip()
+                    if appr_date not in ["-", "", "NaN", "nan"] and pd.notna(appr_date):
+                        found_date = appr_date
+                        found_limit = df_pg_part2.loc[prev_idx, "IM_LIM_AM"]
+                        break
+                # Only add the limit if this approval date hasn't been used yet
+                if found_date and found_date not in used_approval_dates:
+                    total_limit += found_limit
+                    used_approval_dates.add(found_date)
+
+            if total_limit > 0:
+                ratio = crdtcard_outstanding / total_limit
                 task2 = f"{ratio:.2%}"
             else:
                 task2 = "No outstanding found"
-
-        # Task 3: Oldest approval date in part_2 (all users, not per PG_RQS)
+                
+        # Task 3: Oldest approval date for this PG and report date for this PG (like TaskTabBar)
         task3 = "-"
-        if "part_2" in excel_data:
-            df_part2 = excel_data["part_2"].copy()
-            df_part2["DT_APPL"] = pd.to_datetime(df_part2["DT_APPL"], errors="coerce")
-            if not df_part2["DT_APPL"].isna().all():
-                oldest_date = df_part2["DT_APPL"].min()
-                oldest_rows = df_part2[df_part2["DT_APPL"] == oldest_date]
-                row_numbers = ", ".join(oldest_rows["REC_CTR"].astype(str).tolist())
-                task3 = f"{oldest_date.strftime('%d-%m-%Y')} (Rows: {row_numbers})"
+        if "part_2" in excel_data and pg:
+            df_part2 = excel_data["part_2"]
+            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            if not df_pg_part2["DT_APPL"].isna().all():
+                earliest_date = df_pg_part2["DT_APPL"].min()
+                # Get report date from part_4 if available
+                report_date = "-"
+                if "part_4" in excel_data:
+                    df_part4 = excel_data["part_4"]
+                    df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                    if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
+                        latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
+                        if pd.notna(latest_report_date):
+                            report_date = latest_report_date.strftime("%d-%m-%Y")
+                task3 = f"earliest: {earliest_date.strftime('%d-%m-%Y')}, report: {report_date}"
+        
 
         # Task 4: Number of unsecured facilities in last 12 months
         task4 = "-"
@@ -1173,8 +1314,34 @@ class ExcelAllTask:
             unsecured_rows_18 = df_pg_part2[mask]
             task5 = f"{len(unsecured_rows_18)} (Rows: {', '.join(unsecured_rows_18['REC_CTR'].astype(str).tolist()) if not unsecured_rows_18.empty else '-'})"
 
-        # Task 6: (Placeholder, fill in your logic)
+        # Task 6: Thin CCRIS logic
         task6 = "-"
+        if "part_2" in excel_data and pg:
+            df_part2 = excel_data["part_2"]
+            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            # a. Calculate months between earliest date and report date
+            earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
+            # Get report date from part_4 if available, else use latest DT_APPL
+            report_date = None
+            if "part_4" in excel_data:
+                df_part4 = excel_data["part_4"]
+                df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
+                    latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
+                    if pd.notna(latest_report_date):
+                        report_date = latest_report_date
+            if report_date is None and not df_pg_part2["DT_APPL"].isna().all():
+                report_date = df_pg_part2["DT_APPL"].max()
+            # Calculate months difference
+            months_diff = "-"
+            if earliest_date is not None and report_date is not None:
+                months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
+            # b. Only 1 facility?
+            only_one_facility = "No"
+            if df_pg_part2["FCY_TYPE"].nunique() == 1:
+                only_one_facility = "Yes"
+            task6 = f"a. Months: {months_diff}, b. Only 1 facility: {only_one_facility}"
 
         # Task 7: Secured financing (Collateral ≠ 0)
         task7 = "-"
