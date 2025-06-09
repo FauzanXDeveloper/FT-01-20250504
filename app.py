@@ -5,6 +5,7 @@ import sys
 import os
 import math
 import xlsxwriter
+import datetime
 import customtkinter
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -83,7 +84,6 @@ def clean_malformed_xml(xml_str):
 class CTOSReportApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.iconbitmap("ctos.ico")  # Set the application icon
         self.title("CTOS Report Generator")
         self.geometry("1800x900")
         
@@ -109,7 +109,7 @@ class CTOSReportApp(ctk.CTk):
         self.sidebar.pack_propagate(False)
 
         # Hamburger Button (always visible)
-        hamburger_img = ctk.CTkImage(Image.open("hamburger.png"), size=(24, 24))
+        hamburger_img = ctk.CTkImage(Image.open("Picture/hamburger.png"), size=(24, 24))
         self.hamburger_btn = ctk.CTkButton(
             self.sidebar,
             text="",
@@ -184,8 +184,8 @@ class CTOSReportApp(ctk.CTk):
         
         
         try:
-            self.dark_icon = ctk.CTkImage(Image.open("dark_mode_icon.png"), size=(24, 24))
-            self.system_icon = ctk.CTkImage(Image.open("light_mode_icon.png"), size=(24, 24))
+            self.dark_icon = ctk.CTkImage(Image.open("Picture/dark_mode_icon.png"), size=(24, 24))
+            self.system_icon = ctk.CTkImage(Image.open("Picture/light_mode_icon.png"), size=(24, 24))
         except Exception as e:
             print(f"Error loading icons: {e}")
             self.dark_icon = None
@@ -352,48 +352,43 @@ class CTOSReportView(ctk.CTkFrame):
         self.account_var = tk.StringVar()
         self.search_var = tk.StringVar()
         self.all_accounts = []
-        self.current_index = 0  # Track the current NU_PTL index
-        self.filtered_data = None  # Store filtered data for navigation
-        
-    
+        self.current_index = 0
+        self.filtered_data = None
+
         # --- Header Frame ---
         header_frame = ctk.CTkFrame(self)
         header_frame.pack(fill="x", pady=10)
 
         # CTOS logo in center
         try:
-            ctos_img = Image.open("ctos.png")
+            ctos_img = Image.open("Picture/ctos.png")
             self.ctos_logo = ctk.CTkImage(light_image=ctos_img, size=(220, 50))
             ctos_logo_label = ctk.CTkLabel(header_frame, image=self.ctos_logo, text="")
             ctos_logo_label.pack(side="top", pady=5)
-        except Exception as e:
+        except Exception:
             ctos_logo_label = ctk.CTkLabel(header_frame, text="CTOS")
             ctos_logo_label.pack(side="top", pady=5)
 
         # Al Rajhi logo on right
         try:
-            alrajhi_img = Image.open("alrajhi_logo.png")
+            alrajhi_img = Image.open("Picture/alrajhi_logo.png")
             self.alrajhi_logo = ctk.CTkImage(light_image=alrajhi_img, size=(220, 50))
             alrajhi_logo_label = ctk.CTkLabel(header_frame, image=self.alrajhi_logo, text="")
             alrajhi_logo_label.place(relx=1.0, rely=0.0, anchor="ne")
-        except Exception as e:
+        except Exception:
             alrajhi_logo_label = ctk.CTkLabel(header_frame, text="Al Rajhi")
             alrajhi_logo_label.place(relx=1.0, rely=0.0, anchor="ne")
 
-        # --- Control Frame (Import + Combobox + Navigation) ---
+        # --- Control Frame ---
         self.control_frame = ctk.CTkFrame(self)
         self.control_frame.pack(fill="x", pady=5)
+        self.control_frame.grid_columnconfigure(0, weight=1)
+        self.control_frame.grid_columnconfigure(1, weight=0)
+        self.control_frame.grid_columnconfigure(2, weight=1)
 
-        # Configure 3 columns to center the widgets
-        self.control_frame.grid_columnconfigure(0, weight=1)  # Left spacer
-        self.control_frame.grid_columnconfigure(1, weight=0)  # Buttons and Combobox
-        self.control_frame.grid_columnconfigure(2, weight=1)  # Right spacer
+        left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
 
-        # Load arrow icons
-        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
-        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
-        
-        # Previous Button
         self.prev_btn = ctk.CTkButton(
             self.control_frame,
             text="",
@@ -404,7 +399,6 @@ class CTOSReportView(ctk.CTkFrame):
         )
         self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
 
-        # ttk Combobox
         self.ttk_style = ttk.Style()
         self.ttk_style.theme_use('clam')
         self.account_combobox = ttk.Combobox(
@@ -424,28 +418,42 @@ class CTOSReportView(ctk.CTkFrame):
         )
         self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
 
-        self.export_icon = ctk.CTkImage(Image.open("export.png"), size=(24, 24))
-        
-        # Convert to Excel Button
-        self.convert_button = ctk.CTkButton(self.control_frame, text="Convert to Excel", image=self.export_icon,command=self.convert_to_excel, )
+        self.export_icon = ctk.CTkImage(Image.open("Picture/export.png"), size=(24, 24))
+        self.convert_button = ctk.CTkButton(self.control_frame, text="Old Ctos", image=self.export_icon, command=self.convert_to_excel)
         self.convert_button.grid(row=0, column=4, padx=5)
-        
+        self.convert_new_button = ctk.CTkButton(
+            self.control_frame,
+            text="New CTOS",
+            image=self.export_icon,
+            command=self.convert_new_ctos_to_excel
+        )
+        self.convert_new_button.grid(row=0, column=5, padx=5)
+
+        self.dd_index_var = tk.StringVar(value="-")
+        self.dd_index_label = ctk.CTkLabel(
+            self,
+            textvariable=self.dd_index_var,
+            width=48,
+            height=48,
+            fg_color="#1976d2",
+            text_color="#fff",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            corner_radius=12,
+            anchor="center"
+        )
+        self.dd_index_label.place(x=20, y=80)
 
         # --- Treeview for displaying parsed XML data ---
         self.tree_frame = ctk.CTkFrame(self)
         self.tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
         self.tree = ttk.Treeview(self.tree_frame, show="headings")
         self.tree.pack(fill="both", expand=True, side="left", padx=5, pady=5)
-       
-        # Set up two columns with customized widths and centered text.
         self.tree["columns"] = ["Field", "Value"]
         self.tree.heading("Field", text="Field")
         self.tree.heading("Value", text="Value")
         self.tree.column("Field", anchor="center", width=300)
         self.tree.column("Value", anchor="center", width=400)
 
-        # Add context menu for copying
         self.tree.bind("<Button-3>", self.show_context_menu)
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="Copy Row", command=self.copy_row)
@@ -453,16 +461,13 @@ class CTOSReportView(ctk.CTkFrame):
         self._right_click_row = None
         self._right_click_col = None
 
-        # Add a scrollbar
         self.scrollbar = ttk.Scrollbar(self.tree_frame, orient="vertical", command=self.tree.yview)
         self.scrollbar.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=self.scrollbar.set)
 
-        # Create a refresh button
         refresh_button = ctk.CTkButton(self, text="Refresh", command=self.refresh_data)
         refresh_button.pack(pady=10)
-    
-        
+
     def on_account_typing(self, event):
         typed = self.account_var.get().lower()
         filtered = [acct for acct in self.all_accounts if typed in acct.lower()]
@@ -472,10 +477,39 @@ class CTOSReportView(ctk.CTkFrame):
         xml_format_view = self.app.xml_format_view
         if not xml_format_view.xml_data:
             return
-        cleaned_data = {
-            key: clean_malformed_xml(value)
-            for key, value in xml_format_view.xml_data.items()
-        }
+
+        # --- Improved logic for picking best XML per account ---
+        def is_new_ctos_xml(xml_str):
+            return any(tag in xml_str for tag in ["<section_d2", "<section_d4", "<section_etr_plus", "<section_etl"])
+
+        def strip_after_report(xml_str):
+            import re
+            match = re.search(r"(.*?</report>)", xml_str, re.DOTALL | re.IGNORECASE)
+            return match.group(1) if match else xml_str
+
+        def tag_count(xml):
+            import re
+            return len(re.findall(r"<[a-zA-Z0-9_]+", xml))
+
+        # Group by NU_PTL, collect all XMLs for each
+        from collections import defaultdict
+        nuptl_to_xmls = defaultdict(list)
+        for nuptl, xml in xml_format_view.xml_data.items():
+            if xml and isinstance(xml, str):
+                nuptl_to_xmls[nuptl].append(xml)
+
+        cleaned_data = {}
+        for nuptl, xml_list in nuptl_to_xmls.items():
+            # Remove trailing garbage after </report>
+            cleaned_xmls = [strip_after_report(xml) for xml in xml_list]
+            # Prefer new CTOS if available
+            new_ctos_xmls = [xml for xml in cleaned_xmls if is_new_ctos_xml(xml)]
+            if new_ctos_xmls:
+                best_xml = max(new_ctos_xmls, key=tag_count)
+            else:
+                best_xml = max(cleaned_xmls, key=tag_count)
+            cleaned_data[nuptl] = best_xml
+
         self.filtered_data = pd.DataFrame.from_dict(cleaned_data, orient="index", columns=["XML"])
         self.filtered_data.reset_index(inplace=True)
         self.filtered_data.rename(columns={"index": "NU_PTL"}, inplace=True)
@@ -486,7 +520,6 @@ class CTOSReportView(ctk.CTkFrame):
         self.display_data()
 
     def show_context_menu(self, event):
-        # Identify row and column under mouse
         region = self.tree.identify("region", event.x, event.y)
         if region == "cell":
             row_id = self.tree.identify_row(event.y)
@@ -513,7 +546,7 @@ class CTOSReportView(ctk.CTkFrame):
                 text = str(values[col_index])
                 self.clipboard_clear()
                 self.clipboard_append(text)
-                
+
     def display_data(self, event=None):
         selected_account = self.account_var.get()
         if selected_account in self.all_accounts:
@@ -528,6 +561,17 @@ class CTOSReportView(ctk.CTkFrame):
         if pd.isna(xml_data) or not xml_data.strip():
             xml_data = "<No XML Data>"
 
+        # Extract dd_index
+        dd_index_val = "-"
+        try:
+            dom = xml.dom.minidom.parseString(clean_malformed_xml(xml_data))
+            dd_index_nodes = dom.getElementsByTagName("dd_index")
+            if dd_index_nodes and dd_index_nodes[0].firstChild:
+                dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
+        except Exception:
+            pass
+        self.dd_index_var.set(dd_index_val)
+
         self.tree.delete(*self.tree.get_children())
         try:
             dom = xml.dom.minidom.parseString(xml_data)
@@ -538,6 +582,7 @@ class CTOSReportView(ctk.CTkFrame):
 
 
     def parse_xml_to_treeview(self, node, parent_path=""):
+        
         # If the node is a known wrapper (broken XML outer tags), skip it and process its children
         if node.nodeType == xml.dom.minidom.Node.ELEMENT_NODE and node.tagName.lower() in ["root", "span"]:
             for child in node.childNodes:
@@ -781,8 +826,7 @@ class CTOSReportView(ctk.CTkFrame):
         if self.all_accounts and self.current_index < len(self.all_accounts) - 1:
             self.current_index += 1
             self.account_var.set(self.all_accounts[self.current_index])
-            self.display_data()  # <- FIXED
-
+            self.display_data()
 
     def go_to_previous(self):
         if self.all_accounts and self.current_index > 0:
@@ -799,6 +843,492 @@ class CTOSReportView(ctk.CTkFrame):
                 self.current_index = 0
                 self.display_data()
 
+    def convert_new_ctos_to_excel(self):
+        self.is_converting = True
+        self.show_progress_popup()
+        threading.Thread(target=self.convert_new_ctos_to_excel_thread, daemon=True).start()
+
+
+    def convert_new_ctos_to_excel_thread(self):
+
+        new_section_columns = {
+            "Header&Summary": ["NU", "USR", "CMP", "ACC", "TEL", "FAX", "EDT", "ETM", "EST", "NAME", "IC", "NIC", "IDX", "REF"],
+            "Section-A": ["NU", "RID", "NAME", "IC", "NIC", "ADDR", "SRC", "BDT"],
+            "Section-B": ["NU", "RID", "TTL", "NAME", "ALS", "IC", "NIC", "REF", "FIRM", "RM1", "RM2", "RM3", "AMT", "ENT"],
+            "Section-C": ["NU", "RID", "CO", "ADREG", "LOC", "OBJ", "INC", "LST", "APP", "RSN", "NAME", "NIC", "ADDR", "POS", "CPO", "PD", "SH", "TSH", "RM"],
+            "Section-D": [
+                "NU", "RID", "RPTTYPE", "STATUS", "TITLE", "SPECIAL_REMARK", "NAME", "NAME_MATCH", "ALIAS", "ADDR",
+                "IC_LCNO", "NIC_BRNO", "NIC_BRNO_MATCH", "CASE_NO", "COURT_DETAIL", "FIRM", "PLAINTIFF",
+                "ACTION_DATE", "ACTION_SOURCE_DETAIL", "HEAR_DATE", "AMOUNT", "REMARK", "LAWYER", "CEDCON",
+                "SETTLEMENT_CODE", "SETTLEMENT_DATE", "SETTLEMENT_SOURCE", "SETTLEMENT_SOURCE_DATE",
+                "LATEST_STATUS", "SUBJECT_CMT", "CRA_CMT"
+            ],
+            "Section-D2": ["NU", "RID"],
+            "Section-D4": ["NU", "RID"],
+            "Section-ETR_PLUS": ["NU", "RID"],
+            "Section-E": [
+                "NU_PTL", "ROW_ID",
+                "SUBJECT_REF_COM_NAME", "SUBJECT_REF_COM_BUS", "SUBJECT_PARTY_TYPE", "SUBJECT_IC_LCNO", "SUBJECT_NIC_BRNO", "SUBJECT_NAME", "SUBJECT_ADDRESS", "SUBJECT_TREF_DATE",
+                "REL_TYPE", "REL_TYPE_CODE", "REL_STATUS", "REL_STATUS_CODE", "REL_ACCOUNT_NO", "REL_SYEAR", "REL_SMONTH", "REL_SDAY", "REL_REMARK",
+                "ACC_ACCOUNT_NO", "ACC_STATEMENT_DATE", "ACC_RATING", "ACC_RATING_CODE", "ACC_TERM", "ACC_LIMIT", "ACC_STATUS", "ACC_STATUS_CODE",
+                "ACC_DEBTOR_NAME", "ACC_DEBTOR_IC_LCNO", "ACC_DEBTOR_NIC_BRNO", "ACC_ADDRESS", "ACC_DEBT_TYPE", "ACC_DEBT_TYPE_CODE", "ACC_LAST_PAID_AMOUNT",
+                "ACC_AGE_30", "ACC_AGE_60", "ACC_AGE_90", "ACC_AGE_120", "ACC_AGE_150", "ACC_AGE_180", "ACC_AGE_OVER_180",
+                "LEGAL_ACTION_STATUS",
+                "REMINDER_LETTER_TITLE", "REMINDER_LETTER_DATE",
+                "DEMAND_LETTER_BY_COMPANY_TITLE", "DEMAND_LETTER_BY_COMPANY_DATE",
+                "DEMAND_LETTER_BY_LAWYER_TITLE", "DEMAND_LETTER_BY_LAWYER_DATE", "DEMAND_LETTER_BY_LAWYER_REFERENCE",
+                "REF_CONTACT_REF", "REF_CONTACT_NAME", "REF_CONTACT_ADD", "REF_CONTACT_TELNO", "REF_CONTACT_NATURE_OF_BUSINESS",
+                "REF_CONTACT_FAXNO", "REF_CONTACT_EMAIL", "REF_CONTACT_TYPE", "REF_CONTACT_TYPE_CODE"
+            ]
+        }
+
+        new_sheets_data = {k: [] for k in new_section_columns}
+        total = len(self.filtered_data)
+
+        for index, (_, row) in enumerate(self.filtered_data.iterrows()):
+            nu_ptl = row.get("NU_PTL", f"Row{index}")
+            xml_data = clean_malformed_xml(row.get("XML", ""))
+            if pd.isna(xml_data) or not str(xml_data).strip():
+                continue
+            try:
+                dom = xml.dom.minidom.parseString(xml_data)
+                root = dom.documentElement
+                is_new_ctos = any(
+                    root.getElementsByTagName(tag)
+                    for tag in ["section_d2", "section_d4", "section_etl", "section_etr_plus"]
+                )
+                if not is_new_ctos:
+                    continue
+
+                # --- Header&Summary ---
+                header_record = {col: "" for col in new_section_columns["Header&Summary"]}
+                header_record["NU"] = nu_ptl
+                for header in root.getElementsByTagName("header"):
+                    for node in header.childNodes:
+                        if node.nodeType == node.ELEMENT_NODE:
+                            tag = node.tagName.strip().upper()
+                            if tag == "USER":
+                                header_record["USR"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "COMPANY":
+                                header_record["CMP"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "ACCOUNT":
+                                header_record["ACC"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "TEL":
+                                header_record["TEL"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "FAX":
+                                header_record["FAX"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "ENQ_DATE":
+                                header_record["EDT"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "ENQ_TIME":
+                                header_record["ETM"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                            elif tag == "ENQ_STATUS":
+                                header_record["EST"] = node.firstChild.nodeValue.strip() if node.firstChild else ""
+                for summary in root.getElementsByTagName("summary"):
+                    for enq_sum in summary.getElementsByTagName("enq_sum"):
+                        for item in enq_sum.childNodes:
+                            if item.nodeType == item.ELEMENT_NODE:
+                                tag = item.tagName.strip().upper()
+                                if tag == "NAME":
+                                    header_record["NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "IC_LCNO":
+                                    header_record["IC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NIC_BRNO":
+                                    header_record["NIC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "DD_INDEX":
+                                    header_record["IDX"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REF_NO":
+                                    header_record["REF"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                new_sheets_data["Header&Summary"].append(header_record)
+
+                # --- Section-A ---
+                for section_a in root.getElementsByTagName("section_a"):
+                    for record in section_a.getElementsByTagName("record"):
+                        rec = {col: "" for col in new_section_columns["Section-A"]}
+                        rec["NU"] = nu_ptl
+                        rec["RID"] = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                        for item in record.childNodes:
+                            if item.nodeType == item.ELEMENT_NODE:
+                                tag = item.tagName.strip().upper()
+                                if tag == "NAME":
+                                    rec["NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "IC_LCNO":
+                                    rec["IC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NIC_BRNO":
+                                    rec["NIC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ADDR":
+                                    rec["ADDR"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "SOURCE":
+                                    rec["SRC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "BIRTH_DATE":
+                                    rec["BDT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                        new_sheets_data["Section-A"].append(rec)
+
+                # --- Section-B ---
+                for section_b in root.getElementsByTagName("section_b"):
+                    for record in section_b.getElementsByTagName("record"):
+                        rec = {col: "" for col in new_section_columns["Section-B"]}
+                        rec["NU"] = nu_ptl
+                        rec["RID"] = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                        for item in record.childNodes:
+                            if item.nodeType == item.ELEMENT_NODE:
+                                tag = item.tagName.strip().upper()
+                                if tag == "TITLE":
+                                    rec["TTL"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NAME":
+                                    rec["NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ALIAS":
+                                    rec["ALS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "IC_LCNO":
+                                    rec["IC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NIC_BRNO":
+                                    rec["NIC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REF":
+                                    rec["REF"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "FIRM":
+                                    rec["FIRM"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REMARK1":
+                                    rec["RM1"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REMARK2":
+                                    rec["RM2"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REMARK3":
+                                    rec["RM3"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "AMOUNT":
+                                    rec["AMT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ENTRY":
+                                    rec["ENT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                        new_sheets_data["Section-B"].append(rec)
+
+                # --- Section-C ---
+                for section_c in root.getElementsByTagName("section_c"):
+                    for record in section_c.getElementsByTagName("record"):
+                        rec = {col: "" for col in new_section_columns["Section-C"]}
+                        rec["NU"] = nu_ptl
+                        rec["RID"] = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                        for item in record.childNodes:
+                            if item.nodeType == item.ELEMENT_NODE:
+                                tag = item.tagName.strip().upper()
+                                if tag == "COMPANY_NAME":
+                                    rec["CO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ADDITIONAL_REGISTRATION_NO":
+                                    rec["ADREG"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "LOCAL":
+                                    rec["LOC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "OBJECT":
+                                    rec["OBJ"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "INCDATE":
+                                    rec["INC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "LASTDOC":
+                                    rec["LST"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "APPOINT":
+                                    rec["APP"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "RESIGN":
+                                    rec["RSN"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NAME":
+                                    rec["NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NIC_BRNO":
+                                    rec["NIC"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ADDR":
+                                    rec["ADDR"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "POSITION":
+                                    rec["POS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "CPO_DATE":
+                                    rec["CPO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "PAIDUP":
+                                    rec["PD"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "SHARES":
+                                    rec["SH"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "TOTAL_SHARES_PERCENTAGE":
+                                    rec["TSH"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REMARK":
+                                    rec["RM"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                        new_sheets_data["Section-C"].append(rec)
+
+                # --- Section-D ---
+                for section_d in root.getElementsByTagName("section_d"):
+                    for record in section_d.getElementsByTagName("record"):
+                        rec = {col: "" for col in new_section_columns["Section-D"]}
+                        rec["NU"] = nu_ptl
+                        rec["RID"] = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                        rec["RPTTYPE"] = record.getAttribute("rpttype") if record.hasAttribute("rpttype") else ""
+                        rec["STATUS"] = record.getAttribute("status") if record.hasAttribute("status") else ""
+                        for item in record.childNodes:
+                            if item.nodeType == item.ELEMENT_NODE:
+                                tag = item.tagName.strip().upper()
+                                if tag == "TITLE":
+                                    rec["TITLE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "SPECIAL_REMARK":
+                                    rec["SPECIAL_REMARK"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NAME":
+                                    rec["NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    rec["NAME_MATCH"] = item.getAttribute("match") if item.hasAttribute("match") else ""
+                                elif tag == "ALIAS":
+                                    rec["ALIAS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ADDR":
+                                    rec["ADDR"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "IC_LCNO":
+                                    rec["IC_LCNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "NIC_BRNO":
+                                    rec["NIC_BRNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    rec["NIC_BRNO_MATCH"] = item.getAttribute("match") if item.hasAttribute("match") else ""
+                                elif tag == "CASE_NO":
+                                    rec["CASE_NO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "COURT_DETAIL":
+                                    rec["COURT_DETAIL"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "FIRM":
+                                    rec["FIRM"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "PLAINTIFF":
+                                    rec["PLAINTIFF"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "ACTION":
+                                    for subitem in item.childNodes:
+                                        if subitem.nodeType == subitem.ELEMENT_NODE:
+                                            subtag = subitem.tagName.strip().upper()
+                                            if subtag == "DATE":
+                                                rec["ACTION_DATE"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                            elif subtag == "SOURCE_DETAIL":
+                                                rec["ACTION_SOURCE_DETAIL"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                elif tag == "HEAR_DATE":
+                                    rec["HEAR_DATE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "AMOUNT":
+                                    rec["AMOUNT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "REMARK":
+                                    rec["REMARK"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "LAWYER":
+                                    rec["LAWYER"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "CEDCON":
+                                    rec["CEDCON"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "SETTLEMENT":
+                                    for subitem in item.childNodes:
+                                        if subitem.nodeType == subitem.ELEMENT_NODE:
+                                            subtag = subitem.tagName.strip().upper()
+                                            if subtag == "CODE":
+                                                rec["SETTLEMENT_CODE"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                            elif subtag == "DATE":
+                                                rec["SETTLEMENT_DATE"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                            elif subtag == "SOURCE":
+                                                rec["SETTLEMENT_SOURCE"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                            elif subtag == "SOURCE_DATE":
+                                                rec["SETTLEMENT_SOURCE_DATE"] = subitem.firstChild.nodeValue.strip() if subitem.firstChild else ""
+                                elif tag == "LATEST_STATUS":
+                                    rec["LATEST_STATUS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "SUBJECT_CMT":
+                                    rec["SUBJECT_CMT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                elif tag == "CRA_CMT":
+                                    rec["CRA_CMT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                        new_sheets_data["Section-D"].append(rec)
+
+                # --- Section-D2, D4, ETL, ETR_PLUS (minimal: NU, RID) ---
+                for sec_tag, sheet in [("section_d2", "Section-D2"), ("section_d4", "Section-D4"), ("section_etr_plus", "Section-ETR_PLUS")]:
+                    for section in root.getElementsByTagName(sec_tag):
+                        for record in section.getElementsByTagName("record"):
+                            rec = {col: "" for col in new_section_columns[sheet]}
+                            rec["NU"] = nu_ptl
+                            rec["RID"] = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                            new_sheets_data[sheet].append(rec)
+
+                # --- Section-E (Trade Referees) ---
+                section_e_columns = new_section_columns["Section-E"]
+                row_id_counter = 1
+                for section_e in root.getElementsByTagName("section_e"):
+                    for enquiry in section_e.getElementsByTagName("enquiry"):
+                        rec = {col: "" for col in section_e_columns}
+                        rec["NU_PTL"] = nu_ptl
+                        rec["ROW_ID"] = str(row_id_counter)
+                        row_id_counter += 1
+
+                        # Subject
+                        subject = enquiry.getElementsByTagName("subject")
+                        if subject:
+                            subj = subject[0]
+                            for item in subj.childNodes:
+                                if item.nodeType == item.ELEMENT_NODE:
+                                    tag = item.tagName.strip().upper()
+                                    if tag == "REF_COM_NAME":
+                                        rec["SUBJECT_REF_COM_NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "REF_COM_BUS":
+                                        rec["SUBJECT_REF_COM_BUS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "PARTY_TYPE":
+                                        rec["SUBJECT_PARTY_TYPE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "IC_LCNO":
+                                        rec["SUBJECT_IC_LCNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "NIC_BRNO":
+                                        rec["SUBJECT_NIC_BRNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "NAME":
+                                        rec["SUBJECT_NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "ADDRESS":
+                                        rec["SUBJECT_ADDRESS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "TREF_DATE":
+                                        rec["SUBJECT_TREF_DATE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+
+                        # Relationship
+                        relationship = enquiry.getElementsByTagName("relationship")
+                        if relationship:
+                            rel = relationship[0]
+                            for item in rel.childNodes:
+                                if item.nodeType == item.ELEMENT_NODE:
+                                    tag = item.tagName.strip().upper()
+                                    if tag == "REL_TYPE":
+                                        rec["REL_TYPE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["REL_TYPE_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+                                    elif tag == "REL_STATUS":
+                                        rec["REL_STATUS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["REL_STATUS_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+                                    elif tag == "ACCOUNT_NO":
+                                        rec["REL_ACCOUNT_NO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "REL_SYEAR":
+                                        rec["REL_SYEAR"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "REL_SMONTH":
+                                        rec["REL_SMONTH"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "REL_SDAY":
+                                        rec["REL_SDAY"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "REMARK":
+                                        rec["REL_REMARK"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+
+                        # Account Status
+                        account_status = enquiry.getElementsByTagName("account_status")
+                        if account_status:
+                            acc = account_status[0]
+                            for item in acc.childNodes:
+                                if item.nodeType == item.ELEMENT_NODE:
+                                    tag = item.tagName.strip().upper()
+                                    if tag == "ACCOUNT_NO":
+                                        rec["ACC_ACCOUNT_NO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "STATEMENT_DATE":
+                                        rec["ACC_STATEMENT_DATE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "ACCOUNT_RATING":
+                                        rec["ACC_RATING"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["ACC_RATING_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+                                    elif tag == "ACCOUNT_TERM":
+                                        rec["ACC_TERM"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "ACCOUNT_LIMIT":
+                                        rec["ACC_LIMIT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "ACCOUNT_STATUS":
+                                        rec["ACC_STATUS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["ACC_STATUS_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+                                    elif tag == "DEBTOR_NAME":
+                                        rec["ACC_DEBTOR_NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "DEBTOR_IC_LCNO":
+                                        rec["ACC_DEBTOR_IC_LCNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "DEBTOR_NIC_BRNO":
+                                        rec["ACC_DEBTOR_NIC_BRNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "ADDRESS":
+                                        rec["ACC_ADDRESS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "DEBT_TYPE":
+                                        rec["ACC_DEBT_TYPE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["ACC_DEBT_TYPE_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+                                    elif tag == "LAST_PAID_AMOUNT":
+                                        rec["ACC_LAST_PAID_AMOUNT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "AGE":
+                                        for age_item in item.childNodes:
+                                            if age_item.nodeType == age_item.ELEMENT_NODE:
+                                                age_tag = age_item.tagName.strip().upper()
+                                                if age_tag == "AGE_30":
+                                                    rec["ACC_AGE_30"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_60":
+                                                    rec["ACC_AGE_60"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_90":
+                                                    rec["ACC_AGE_90"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_120":
+                                                    rec["ACC_AGE_120"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_150":
+                                                    rec["ACC_AGE_150"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_180":
+                                                    rec["ACC_AGE_180"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                                elif age_tag == "AGE_OVER_180":
+                                                    rec["ACC_AGE_OVER_180"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+
+                        # Legal Action
+                        legal_action = enquiry.getElementsByTagName("legal_action")
+                        if legal_action:
+                            legal = legal_action[0]
+                            rec["LEGAL_ACTION_STATUS"] = legal.getAttribute("status") if legal.hasAttribute("status") else ""
+                            for item in legal.childNodes:
+                                if item.nodeType == item.ELEMENT_NODE:
+                                    tag = item.tagName.strip().upper()
+                                    if tag == "REMINDER_LETTER":
+                                        for sub in item.childNodes:
+                                            if sub.nodeType == sub.ELEMENT_NODE:
+                                                subtag = sub.tagName.strip().upper()
+                                                if subtag == "TITLE":
+                                                    rec["REMINDER_LETTER_TITLE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                                elif subtag == "DATE":
+                                                    rec["REMINDER_LETTER_DATE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                    elif tag == "DEMAND_LETTER_BY_COMPANY":
+                                        for sub in item.childNodes:
+                                            if sub.nodeType == sub.ELEMENT_NODE:
+                                                subtag = sub.tagName.strip().upper()
+                                                if subtag == "TITLE":
+                                                    rec["DEMAND_LETTER_BY_COMPANY_TITLE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                                elif subtag == "DATE":
+                                                    rec["DEMAND_LETTER_BY_COMPANY_DATE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                    elif tag == "DEMAND_LETTER_BY_LAWYER":
+                                        for sub in item.childNodes:
+                                            if sub.nodeType == sub.ELEMENT_NODE:
+                                                subtag = sub.tagName.strip().upper()
+                                                if subtag == "TITLE":
+                                                    rec["DEMAND_LETTER_BY_LAWYER_TITLE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                                elif subtag == "DATE":
+                                                    rec["DEMAND_LETTER_BY_LAWYER_DATE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+                                                elif subtag == "REFERENCE":
+                                                    rec["DEMAND_LETTER_BY_LAWYER_REFERENCE"] = sub.firstChild.nodeValue.strip() if sub.firstChild else ""
+
+                        # Referee Contact
+                        referee_contact = enquiry.getElementsByTagName("referee_contact")
+                        if referee_contact:
+                            refc = referee_contact[0]
+                            for item in refc.childNodes:
+                                if item.nodeType == item.ELEMENT_NODE:
+                                    tag = item.tagName.strip().upper()
+                                    if tag == "CONTACT_REF":
+                                        rec["REF_CONTACT_REF"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_NAME":
+                                        rec["REF_CONTACT_NAME"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_ADD":
+                                        rec["REF_CONTACT_ADD"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_TELNO":
+                                        rec["REF_CONTACT_TELNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_NATURE_OF_BUSINESS":
+                                        rec["REF_CONTACT_NATURE_OF_BUSINESS"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_FAXNO":
+                                        rec["REF_CONTACT_FAXNO"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_EMAIL":
+                                        rec["REF_CONTACT_EMAIL"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                    elif tag == "CONTACT_TYPE":
+                                        rec["REF_CONTACT_TYPE"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
+                                        rec["REF_CONTACT_TYPE_CODE"] = item.getAttribute("code") if item.hasAttribute("code") else ""
+
+                        new_sheets_data["Section-E"].append(rec)
+
+            except Exception as e:
+                msg = f"Error parsing XML for NU_PTL {nu_ptl}: {str(e)}"
+                self.after(0, self.append_error, msg)
+                continue
+
+            if index % 10 == 0 or index + 1 == total:
+                progress = (index + 1) / total
+                self.after(0, self.update_progress, progress, index + 1, total)
+
+        # Ensure all sheets exist and have at least header row
+        for sheet in ["Section-D", "Section-D2", "Section-D4", "Section-ETR_PLUS", "Section-E"]:
+            if sheet not in new_sheets_data:
+                new_sheets_data[sheet] = []
+            if not new_sheets_data[sheet]:
+                new_sheets_data[sheet].append({col: "" for col in new_section_columns[sheet]})
+
+        # Export to Excel
+        self.after(0, self.update_status, "Writing to Excel...")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+        new_save_path = os.path.join(downloads_folder, f"new_ctos_report_{timestamp}.xlsx")
+        if any(len(records) > 0 for records in new_sheets_data.values()):
+            with pd.ExcelWriter(new_save_path, engine="openpyxl") as writer:
+                for sheet_name, records in new_sheets_data.items():
+                    if records:
+                        df = pd.DataFrame(records)
+                        df = df.reindex(columns=new_section_columns[sheet_name])
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        self.after(0, self.update_status, "Export successful!")
+        self.after(0, self.destroy_popup)
+
     def convert_to_excel(self):
         self.is_converting = True
         self.show_progress_popup()
@@ -810,10 +1340,8 @@ class CTOSReportView(ctk.CTkFrame):
         # Removed: self.popup.update()  # <-- Avoid explicit update call here
         
     def convert_to_excel_thread(self):
-        from collections import defaultdict
-
-        # Your fixed columns per sheet
-        section_columns = {
+        # Define columns for old CTOS only
+        old_section_columns = {
             "Header&Summary": ["NU_PTL", "user", "company", "account", "tel", "fax", "enq_date", "enq_time", "enq_status", "IC_LCNO", "NIC_BRNO", "NAME", "ALIAS", "STAT", "REF"],
             "Section-A": ["NU_PTL", "Record_ID", "ICNO", "MATCH", "NEWIC", "MATCH1", "NAME", "MATCH2", "ADDR", "ADDR1", "REMARK"],
             "Section-B": ["NU_PTL", "Record_ID", "CODE", "NAME", "MATCH", "ALIAS", "IC_LCNO", "NIC_BRNO", "REF", "CONUM", "CONAME", "REMARK", "REMARK2", "REMARK3", "AMOUNT", "ENTRY"],
@@ -822,138 +1350,96 @@ class CTOSReportView(ctk.CTkFrame):
             "Section-E": ["NU_PTL", "Record_ID", "REFEREE", "INCORPORATION DATE", "NATURE OF BUSINESS", "ADDRESS", "TR_URL"]
         }
 
-        try:
-            if self.filtered_data is None or self.filtered_data.empty:
-                self.after(0, self.update_status, "No data to convert.")
-                return
+        old_sheets_data = {k: [] for k in old_section_columns}
+        total = len(self.filtered_data)
 
-            save_path = filedialog.asksaveasfilename(
-                defaultextension=".xlsx",
-                filetypes=[("Excel Files", "*.xlsx")],
-                title="Save Converted Excel"
-            )
-            if not save_path:
-                self.after(0, self.update_status, "Save cancelled.")
-                return
+        for index, (_, row) in enumerate(self.filtered_data.iterrows()):
+            nu_ptl = row.get("NU_PTL", f"Row{index}")
+            xml_data = clean_malformed_xml(row.get("XML", ""))
 
-            self.after(0, self.update_status, "Extracting data...")
-            self.after(0, lambda: self.error_textbox.delete("1.0", "end"))
-            self.after(0, self.progress_bar.set, 0)
+            if pd.isna(xml_data) or not str(xml_data).strip():
+                continue
 
-            # Initialize data container
-            sheets_data = {
-                "Header&Summary": [],
-                "Section-A": [],
-                "Section-B": [],
-                "Section-C": [],
-                "Section-D": [],
-                "Section-E": []
-            }
+            try:
+                dom = xml.dom.minidom.parseString(xml_data)
+                root = dom.documentElement
 
-            total = len(self.filtered_data)
+                # Extract Header&Summary
+                header_record = {col: "" for col in old_section_columns["Header&Summary"]}
+                header_record["NU_PTL"] = nu_ptl
+                for header in root.getElementsByTagName("header"):
+                    for node in header.childNodes:
+                        if node.nodeType == node.ELEMENT_NODE:
+                            tag = node.tagName.strip()
+                            if tag in old_section_columns["Header&Summary"]:
+                                header_record[tag] = node.firstChild.nodeValue.strip() if node.firstChild else "-"
+                for summary in root.getElementsByTagName("summary"):
+                    for enq_sum in summary.getElementsByTagName("enq_sum"):
+                        for fs in enq_sum.getElementsByTagName("field_sum"):
+                            if fs.hasAttribute("name"):
+                                field = fs.getAttribute("name").strip()
+                                if field in old_section_columns["Header&Summary"]:
+                                    value = fs.firstChild.nodeValue.strip() if fs.firstChild else "-"
+                                    header_record[field] = value
+                old_sheets_data["Header&Summary"].append(header_record)
 
-            for index, (_, row) in enumerate(self.filtered_data.iterrows()):
-                if not self.is_converting:
-                    break
-
-                nu_ptl = row.get("NU_PTL", f"Row{index}")
-                xml_data = clean_malformed_xml(row.get("XML", ""))
-
-                if pd.isna(xml_data) or not str(xml_data).strip():
-                    continue
-
-                try:
-                    dom = xml.dom.minidom.parseString(xml_data)
-                    root = dom.documentElement
-
-                    # Header&Summary
-                    # Collect header info into a dict with all keys preset to ""
-                    header_record = {col: "" for col in section_columns["Header&Summary"]}
-                    header_record["NU_PTL"] = nu_ptl
-
-                    for header in root.getElementsByTagName("header"):
-                        for node in header.childNodes:
-                            if node.nodeType == node.ELEMENT_NODE:
-                                tag = node.tagName.strip()
-                                if tag in section_columns["Header&Summary"]:
-                                    header_record[tag] = node.firstChild.nodeValue.strip() if node.firstChild else "-"
-                    # Collect summary/enq_sum fields (field_sum nodes)
-                    for summary in root.getElementsByTagName("summary"):
-                        for enq_sum in summary.getElementsByTagName("enq_sum"):
-                            for fs in enq_sum.getElementsByTagName("field_sum"):
-                                if fs.hasAttribute("name"):
-                                    field = fs.getAttribute("name").strip()
-                                    if field in section_columns["Header&Summary"]:
-                                        value = fs.firstChild.nodeValue.strip() if fs.firstChild else "-"
-                                        header_record[field] = value
-                    sheets_data["Header&Summary"].append(header_record)
-
-                    # Sections A-E
-                    for section in root.getElementsByTagName("section"):
-                        section_id = section.getAttribute("id").strip()
-                        section_key = f"Section-{section_id}"
-
-                        if section_key not in sheets_data:
-                            continue
-
-                        for rec in section.getElementsByTagName("record"):
-                            record = {col: "" for col in section_columns[section_key]}
-                            record["NU_PTL"] = nu_ptl
-                            record_id = rec.getAttribute("seq").strip() if rec.hasAttribute("seq") else ""
-                            record["Record_ID"] = record_id
-
-                            for data in rec.getElementsByTagName("data"):
-                                name = data.getAttribute("name").strip().upper()
-                                caption = data.getAttribute("caption").strip().upper()
-
-                                possible_keys = []
-                                if caption:
-                                    possible_keys.append(caption)
-                                if name:
-                                    possible_keys.append(name)
-
-                                matched_field = None
-                                for key in possible_keys:
-                                    for expected in section_columns.get(section_key, []):
-                                        if expected.upper() == key:
-                                            matched_field = expected
-                                            break
-                                    if matched_field:
+                # Extract each section
+                for section in root.getElementsByTagName("section"):
+                    section_id = section.getAttribute("id").strip().upper()
+                    section_key = f"Section-{section_id}"
+                    if section_key not in old_sheets_data:
+                        continue
+                    for rec in section.getElementsByTagName("record"):
+                        record = {col: "" for col in old_section_columns[section_key]}
+                        record["NU_PTL"] = nu_ptl
+                        record_id = rec.getAttribute("seq").strip() if rec.hasAttribute("seq") else ""
+                        record["Record_ID"] = record_id
+                        for data in rec.getElementsByTagName("data"):
+                            name = data.getAttribute("name").strip()
+                            caption = data.getAttribute("caption").strip()
+                            possible_keys = []
+                            if caption:
+                                possible_keys.append(caption)
+                            if name:
+                                possible_keys.append(name)
+                            matched_field = None
+                            for key in possible_keys:
+                                for expected in old_section_columns.get(section_key, []):
+                                    if expected.upper() == key.upper():
+                                        matched_field = expected
                                         break
-
                                 if matched_field:
-                                    value = data.firstChild.nodeValue.strip() if data.firstChild else ""
-                                    record[matched_field] = value
+                                    break
+                            if matched_field:
+                                value = data.firstChild.nodeValue.strip() if data.firstChild else ""
+                                record[matched_field] = value
+                        old_sheets_data[section_key].append(record)
 
-                            sheets_data[section_key].append(record)
+            except Exception as e:
+                msg = f"Error parsing XML for NU_PTL {nu_ptl}: {str(e)}"
+                self.after(0, self.append_error, msg)
+                continue
 
-                except Exception as e:
-                    msg = f"Error parsing XML for NU_PTL {nu_ptl}: {str(e)}"
-                    self.after(0, self.append_error, msg)
-                    continue
+            if index % 10 == 0 or index + 1 == total:
+                progress = (index + 1) / total
+                self.after(0, self.update_progress, progress, index + 1, total)
 
-                if index % 10 == 0 or index + 1 == total:
-                    progress = (index + 1) / total
-                    self.after(0, self.update_progress, progress, index + 1, total)
+        # Export to Excel
+        self.after(0, self.update_status, "Writing to Excel...")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+        old_save_path = os.path.join(downloads_folder, f"old_ctos_report_{timestamp}.xlsx")
 
-            # Export to Excel
-            self.after(0, self.update_status, "Writing to Excel...")
-
-            with pd.ExcelWriter(save_path, engine="openpyxl") as writer:
-                for sheet_name, records in sheets_data.items():
+        if any(len(records) > 0 for records in old_sheets_data.values()):
+            with pd.ExcelWriter(old_save_path, engine="openpyxl") as writer:
+                for sheet_name, records in old_sheets_data.items():
                     if records:
                         df = pd.DataFrame(records)
-                        # Ensure columns are ordered exactly as defined
-                        df = df.reindex(columns=section_columns[sheet_name])
+                        df = df.reindex(columns=old_section_columns[sheet_name])
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-            self.after(0, self.update_status, "Export successful!")
-            self.after(0, self.destroy_popup)
-
-        except Exception as e:
-            self.after(0, self.update_status, f"Error: {str(e)}")
-            self.after(0, self.append_error, f"Fatal error: {str(e)}")
-            self.after(0, self.destroy_popup)
+        self.after(0, self.update_status, "Export successful!")
+        self.after(0, self.destroy_popup)
 
 
     def append_error(self, msg):
@@ -1001,10 +1487,11 @@ class XMLFormatView(ctk.CTkFrame):
         # --- Header Frame ---
         header_frame = ctk.CTkFrame(self)
         header_frame.pack(fill="x", pady=10)
+        
 
         # CTOS logo in center
         try:
-            ctos_img = Image.open("ctos.png")
+            ctos_img = Image.open("Picture/ctos.png")
             self.ctos_logo = ctk.CTkImage(light_image=ctos_img, size=(220, 50))
             ctos_logo_label = ctk.CTkLabel(header_frame, image=self.ctos_logo, text="")
             ctos_logo_label.pack(side="top", pady=5)
@@ -1014,7 +1501,7 @@ class XMLFormatView(ctk.CTkFrame):
         
         # Al Rajhi logo on right
         try:
-            alrajhi_img = Image.open("alrajhi_logo.png")
+            alrajhi_img = Image.open("Picture/alrajhi_logo.png")
             self.alrajhi_logo = ctk.CTkImage(light_image=alrajhi_img, size=(220, 50))
             alrajhi_logo_label = ctk.CTkLabel(header_frame, image=self.alrajhi_logo, text="")
             alrajhi_logo_label.place(relx=1.0, rely=0.0, anchor="ne")
@@ -1032,8 +1519,8 @@ class XMLFormatView(ctk.CTkFrame):
         control_frame.grid_columnconfigure(2, weight=1)  # Right spacer
 
         # Load arrow icons
-        left_arrow_icon = ctk.CTkImage(Image.open("left-arrow.png"), size=(24, 24))
-        right_arrow_icon = ctk.CTkImage(Image.open("right-arrow.png"), size=(24, 24))
+        left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
+        right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
         
         self.prev_btn = ctk.CTkButton(
             control_frame,
@@ -1078,6 +1565,21 @@ class XMLFormatView(ctk.CTkFrame):
         # Refresh Button
         self.refresh_button = ctk.CTkButton(self, text="Refresh Data", command=self.refresh_data)
         self.refresh_button.pack(pady=10)
+        
+        # dd_index badge (square)
+        self.dd_index_var = tk.StringVar(value="-")
+        self.dd_index_label = ctk.CTkLabel(
+            self,
+            textvariable=self.dd_index_var,
+            width=48,
+            height=48,
+            fg_color="#1976d2",
+            text_color="#fff",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            corner_radius=12,
+            anchor="center"
+        )
+        self.dd_index_label.place(x=20, y=80)
     
     def on_account_typing(self, event):
         typed = self.account_var.get().lower()
@@ -1117,30 +1619,54 @@ class XMLFormatView(ctk.CTkFrame):
 
     def process_data(self, data):
         from collections import defaultdict
+        import re
 
         self.xml_data = {}
         self.all_accounts = []
 
-        # Group by NU_PTL
+        # Group by base NU_PTL (remove _0, _1, _2, etc.)
+        nuptl_to_xmls = defaultdict(list)
         for nu_ptl, group in data.groupby("NU_PTL"):
+            # Extract base NU_PTL (before underscore)
+            base_nuptl = str(nu_ptl).split("_")[0]
             group = group.sort_values("ROW_ID").reset_index(drop=True)
-            # Count how many times each ROW_ID has appeared so far
             rowid_counters = defaultdict(int)
             set_indices = []
             for idx, row in group.iterrows():
                 rid = row["ROW_ID"]
                 set_indices.append(rowid_counters[rid])
                 rowid_counters[rid] += 1
-            # Now, group by set index
             sets = defaultdict(list)
             for idx, row in enumerate(group.itertuples()):
                 set_idx = set_indices[idx]
                 sets[set_idx].append(str(row.XML))
-            # Save as separate documents: key = f"{nu_ptl}_{set_idx}"
             for set_idx, xmls in sets.items():
-                key = f"{nu_ptl}_{set_idx}"
-                self.xml_data[key] = "".join(xmls)
-                self.all_accounts.append(key)
+                nuptl_to_xmls[base_nuptl].append("".join(xmls))
+
+        def is_perfect_xml(xml):
+            xml = xml.strip()
+            import re
+            # Remove XML declaration if present
+            if xml.startswith("<?xml"):
+                xml = re.sub(r"<\?xml[^>]*\?>", "", xml).strip()
+            # Exclude if starts with <root>, <span>, or <div>
+            for tag in ("<root", "<span", "<div"):
+                if xml.startswith(tag):
+                    return False
+            # Must contain <enq_report or <report (not just wrapper)
+            if "<enq_report" in xml or "<report" in xml:
+                return True
+            return False
+
+        for base_nuptl, xml_list in nuptl_to_xmls.items():
+            # Collect all perfect XMLs
+            perfect_xmls = [xml for xml in xml_list if is_perfect_xml(xml)]
+            if perfect_xmls:
+                perfect = perfect_xmls[0]
+            else:
+                perfect = xml_list[0]
+            self.xml_data[base_nuptl] = perfect
+            self.all_accounts.append(base_nuptl)
 
         self.account_combobox['values'] = self.all_accounts
         if self.all_accounts:
@@ -1153,9 +1679,19 @@ class XMLFormatView(ctk.CTkFrame):
             self.current_index = self.all_accounts.index(selected_account)
             raw_xml = self.xml_data[selected_account]
 
+            # Extract dd_index
+            dd_index_val = "-"
+            try:
+                dom = xml.dom.minidom.parseString(clean_malformed_xml(raw_xml))
+                dd_index_nodes = dom.getElementsByTagName("dd_index")
+                if dd_index_nodes and dd_index_nodes[0].firstChild:
+                    dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
+            except Exception:
+                pass
+            self.dd_index_var.set(dd_index_val)
+
             try:
                 cleaned_xml = clean_malformed_xml(raw_xml)
-                # Beautify the XML
                 dom = xml.dom.minidom.parseString(cleaned_xml)
                 pretty_xml = dom.toprettyxml(indent="    ")
             except Exception as e:
@@ -1165,6 +1701,7 @@ class XMLFormatView(ctk.CTkFrame):
             self.xml_display.delete("1.0", "end")
             self.xml_display.insert("1.0", pretty_xml)
         else:
+            self.dd_index_var.set("-")
             self.xml_display.delete("1.0", "end")
             self.xml_display.insert("1.0", "No data available for the selected account.")
 
