@@ -135,6 +135,16 @@
     "hover_color": ["#B89B75", "#6E5B4E"],
     "text_color": ["#5C3F2D", "#C2B49E"]
   },
+  "Treeview": {
+    "rowheight": 28,
+    "font": ["Segoe UI 11", "Segoe UI 11"],
+    "background": ["#00BCD4", "#223A5E"],
+    "heading_background": ["#00BCD4", "#003366"],
+    "foreground": ["#006064", "#F7F9FB"],
+    "heading_foreground": ["#FFFFFF", "#FFD700"],
+    "selected_background": ["#E0F7FA", "#C9A13B"],
+    "selected_foreground": ["#006064", "#223A5E"]
+  },
   "CTkFont": {
     "macOS": {
       "family": "SF Display",
