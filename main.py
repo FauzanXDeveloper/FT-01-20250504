@@ -2,7 +2,7 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, ttk
 import pandas as pd
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageSequence
 import datetime
 import threading
 import subprocess
@@ -130,10 +130,10 @@ def bring_integrate_to_front():
         win32gui.SetForegroundWindow(h)
 
 def back_to_main():
-    script_path = os.path.join(os.getcwd(), "integrate.py")
+    exe_path = os.path.join(os.getcwd(), "integrate.exe")
     proc = is_integrate_running()
     if proc is None:
-        subprocess.Popen([sys.executable, script_path])
+        subprocess.Popen([exe_path])
     else:
         bring_integrate_to_front()
 
@@ -231,20 +231,21 @@ class CCRISReport:
         self.outer_frame = ctk.CTkFrame(parent)
         self.outer_frame.pack(fill="both", expand=True, padx=10, pady=10)
         
+        self.loading_label = ctk.CTkLabel(self.outer_frame, text="", fg_color="#141414")
+        self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.loading_label.lower()
+        self.loading_gif_running = False
+        
         self.task_tab = TaskTabBar(self.outer_frame)
         
         # --- Loading Overlay ---
         self.loading_gif = Image.open("Picture/loading.gif")
         self.loading_frames = []
-        size = (64, 64)
-        for angle in range(0, 360, 30):
-            frame = self.loading_gif.copy().resize(size, Image.LANCZOS).convert("RGBA")
-            rotated = frame.rotate(angle)
-            self.loading_frames.append(ctk.CTkImage(rotated, size=size))
-        self.loading_label = ctk.CTkLabel(self.outer_frame, text="")
-        self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
-        self.loading_label.lower()
-        self.loading_gif_running = False
+        size = (150, 150)  # or (48, 48) for ExcelAllTask
+
+        for frame in ImageSequence.Iterator(self.loading_gif):
+            rgba = frame.convert("RGBA").resize(size, Image.LANCZOS)
+            self.loading_frames.append(ctk.CTkImage(rgba, size=size))
 
         
         # Use a regular Canvas for scrolling
@@ -375,13 +376,37 @@ class CCRISReport:
         # Hide by default (will be shown by sidebar button)
         self.frame.pack_forget()
     
-    # Function to handle mouse wheel events
+
+        # Function to handle mouse wheel events for the canvas
         def _on_mousewheel(event):
             self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        # Bind mouse wheel when cursor enters canvas,
-        # unbind it when cursor leaves
         self.canvas.bind("<Enter>", lambda e: self.canvas.bind_all("<MouseWheel>", _on_mousewheel))
         self.canvas.bind("<Leave>", lambda e: self.canvas.unbind_all("<MouseWheel>"))
+
+        # Use this function for all Treeviews:
+        def bind_treeview_mousewheel_with_passthrough(tree, canvas):
+            def _on_mousewheel(event):
+                first, last = tree.yview()
+                direction = -1 if event.delta > 0 else 1
+                # If Treeview can scroll in the direction, scroll it
+                if (direction == -1 and first > 0) or (direction == 1 and last < 1):
+                    tree.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    return "break"
+                else:
+                    # Otherwise, scroll the canvas
+                    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    return "break"
+            def _bind(event):
+                tree.bind_all("<MouseWheel>", _on_mousewheel)
+            def _unbind(event):
+                tree.unbind_all("<MouseWheel>")
+            tree.bind("<Enter>", _bind)
+            tree.bind("<Leave>", _unbind)
+
+        # After creating the Treeviews:
+        bind_treeview_mousewheel_with_passthrough(self.outstanding_tree, self.canvas)
+        bind_treeview_mousewheel_with_passthrough(self.attention_tree, self.canvas)
+        bind_treeview_mousewheel_with_passthrough(self.application_tree, self.canvas)
 
     def on_previous(self):
         # Example: set the combobox to the previous page (if available)
@@ -712,8 +737,7 @@ class TaskTabBar:
         else:
             pending_numbers_str = "-"
         task1_text = (
-            f"Task 1:\n"
-            f"Pending applications in last One month: {pending_count_last_month}\n"
+            f"1. Number of pending applications in the last one month: {pending_count_last_month}\n"
             f"Row No : {pending_numbers_str}\n"
             f"Report Date: {report_date_str}\n"
         )
@@ -755,7 +779,7 @@ class TaskTabBar:
                 task2_result = f"{ratio:.2%}"
             else:
                 task2_result = "No outstanding found"
-            task2_text = f"Task 2:\nCRDTCARD Outstanding : {task2_result}\n"
+            task2_text = f"2. Credit Card utilization:\nCRDTCARD Outstanding : {task2_result}\n"
         
         task3_result = "-"
         task3_text = "Task 3:\nCCRISCard Age : -\n"
@@ -776,7 +800,7 @@ class TaskTabBar:
                         if pd.notna(latest_report_date):
                             report_date = latest_report_date.strftime("%d-%m-%Y")
                 task3_result = f"earliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}"
-                task3_text = f"Task 3:\n-CCRISCard Age :\nearliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}\n"
+                task3_text = f"3. CCRIS Age:\nearliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}\n"
             
 
         # --- Task 4: Number of unsecured facilities in last 12 months ---
@@ -801,8 +825,7 @@ class TaskTabBar:
                     task4_result = len(unsecured_rows)
                     task4_rows = ", ".join(unsecured_rows["REC_CTR"].astype(str).tolist()) if not unsecured_rows.empty else "-"
         task4_text = (
-            f"Task 4:\n"
-            f"Number of unsecured facilities in last 12 months: {task4_result}\n"
+            f"4. Number of unsecured facilities in last 12 months: {task4_result}\n"
             f"Row No: {task4_rows}\n"
         )
 
@@ -828,8 +851,7 @@ class TaskTabBar:
                     task5_result = len(unsecured_rows_18)
                     task5_rows = ", ".join(unsecured_rows_18["REC_CTR"].astype(str).tolist()) if not unsecured_rows_18.empty else "-"
         task5_text = (
-            f"Task 5:\n"
-            f"Number of unsecured facilities in last 18 months: {task5_result}\n"
+            f"5. Number of unsecured facilities in last 18 months: {task5_result}\n"
             f"Row No: {task5_rows}\n"
         )
         
@@ -858,39 +880,39 @@ class TaskTabBar:
             if df_pg_part2["FCY_TYPE"].nunique() == 1:
                 only_one_facility = "Yes"
             task6_result = f"a. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}"
-            task6_text = f"Task 6:\nTHIN CCRIS :\na. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}\n"
+            task6_text = f"6. Thin CCRIS:\na. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}\n"
 
         # --- Task 7: Secured financing (Collateral ≠ 0) ---
-        task7_count = "-"
-        task7_outstanding = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            secured = df_pg_part2[df_pg_part2["COL_TYPE"] != "0"]
-            task7_count = len(secured)
-            task7_outstanding = f"{secured['IM_AM'].sum():,.2f}" if not secured.empty else "0.00"
-        task7_text = (
-            f"Task 7:\n"
-            f"a. Total number of secured facilities: {task7_count}\n"
-            f"b. Total outstanding: {task7_outstanding}\n"
-        )
+               
+        task7_count = 0
+        task7_outstanding = 0.0
+        task8_count = 0
+        task8_outstanding = 0.0
 
-        # --- Task 8: Unsecured financing (Collateral = 0) ---
-        task8_count = "-"
-        task8_outstanding = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            unsecured = df_pg_part2[(df_pg_part2["COL_TYPE"] == "0") & (df_pg_part2["IM_AM"] > 0)]
-            task8_count = len(unsecured)
-            task8_outstanding = f"{unsecured['IM_AM'].sum():,.2f}" if not unsecured.empty else "0.00"
-        task8_text = (
-            f"Task 8:\n"
-            f"a. Total number of unsecured facilities: {task8_count}\n"
-            f"b. Total outstanding: {task8_outstanding}\n"
-        )
+        if not df_pg_part2.empty:
+            df_pg_part2 = df_pg_part2.reset_index(drop=True)
+            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
+            date_mask = ~df_pg_part2["DT_APPL"].isin(["-", "", None]) & ~df_pg_part2["DT_APPL"].isna()
+            group_indices = df_pg_part2.index[date_mask].tolist()
+            group_indices.append(len(df_pg_part2))  # sentinel for last group
+
+            for i in range(len(group_indices) - 1):
+                start = group_indices[i]
+                end = group_indices[i + 1]
+                group = df_pg_part2.iloc[start:end]
+                # If any row in group has COL_TYPE != "0", it's secured
+                if (group["COL_TYPE"] != "0").any():
+                    task7_count += 1
+                    task7_outstanding += group["IM_AM"].sum()
+                # Else if all are COL_TYPE == "0", it's unsecured
+                elif (group["COL_TYPE"] == "0").all():
+                    task8_count += 1
+                    task8_outstanding += group["IM_AM"].sum()
+                # else: skip (should not happen)
+
+        task7_text = (f"7. Secured Financing: {task7_count} \n" f"(Outstanding: {task7_outstanding:,.2f})\n")
+        task8_text = (f"8. Unsecured Financing: {task8_count} \n" f"(Outstanding: {task8_outstanding:,.2f})")
+        
 
         all_tasks_text = f"{task1_text}\n{task2_text}\n{task3_text}\n{task4_text}\n{task5_text}\n{task6_text}\n{task7_text}\n{task8_text}"
         self.content_label.configure(text=all_tasks_text)
@@ -1040,75 +1062,73 @@ class ExcelAllTask:
         # --- Animated GIF Loading (rotating and small) ---
         self.loading_gif = Image.open("Picture/loading.gif")
         self.loading_frames = []
-        size = (48, 48)
-        for angle in range(0, 360, 30):
-            frame = self.loading_gif.copy().resize(size, Image.LANCZOS).convert("RGBA")
-            rotated = frame.rotate(angle)
-            self.loading_frames.append(ctk.CTkImage(rotated, size=size))
-
-        self.loading_label = ctk.CTkLabel(self.frame, text="")
+        size = (100, 100)
+        for frame in ImageSequence.Iterator(self.loading_gif):
+            rgba = frame.convert("RGBA").resize(size, Image.LANCZOS)
+            self.loading_frames.append(ctk.CTkImage(rgba, size=size))
+        
+        # Create loading label and percentage label (placed over self.frame)
+        self.loading_label = ctk.CTkLabel(self.frame, text="", fg_color="#141414")
         self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
         self.loading_label.lower()
+        self.loading_percentage_label = ctk.CTkLabel(self.frame, text="", fg_color="#141414", font=("Arial", 14))
+        self.loading_percentage_label.place(relx=0.5, rely=0.65, anchor="center")
+        self.loading_percentage_label.lower()
+        
         self.loading_gif_running = False
+        self.loading_progress = 0
 
         # --- Table Section ---
-        # --- Table Section ---
-        self.columns = ["PG_RQS"] + [f"Task {i}" for i in range(1, 9)]
+        self.columns = [
+            "PG_RQS",
+            "pending applications last 1 month",
+            "Credit Card utilization",
+            "earliest date",
+            "Unsecured Facilities Approved last 12 months",
+            "Unsecured Facilities Approved last 18 months",
+            "Date CCRIS pulled – Date earliest financing",
+            "only 1 facility",
+            "Secured financing",
+            "Secured financing (Total outstanding)",
+            "Unsecured financing",
+            "Unsecured financing (Total outstanding)"
+        ]
         table_frame = ctk.CTkFrame(self.frame, corner_radius=8)
         table_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Apply the treeview style using the current appearance mode
-        self.set_treeview_style(ctk.get_appearance_mode())
-        
-        # Create the Treeview using the "Treeview" style from above
+
+        style = ttk.Style()
+        style.configure("Modern.Treeview",
+                        font=("Consolas", 13),
+                        rowheight=28,
+                        background="#23272e",
+                        fieldbackground="#23272e",
+                        foreground="#ffffff")
+        style.configure("Modern.Treeview.Heading",
+                        font=("Consolas", 13),
+                        background="#1976d2",
+                        foreground="#000000")  # <-- Set header text to black
+        style.layout("Modern.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+
         self.tree = ttk.Treeview(
             table_frame,
             columns=self.columns,
             show="headings",
             height=18,
-            style="Treeview",
+            style="Modern.Treeview",
             selectmode="browse"
         )
         for col in self.columns:
             self.tree.heading(col, text=col)
             self.tree.column(col, anchor="center", width=160, stretch=True)
         self.tree.pack(side="left", fill="both", expand=True)
-        
 
         # Add vertical scrollbar
         yscroll = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         yscroll.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=yscroll.set)
-
-    def set_treeview_style(self, mode):
-        style = ttk.Style()
-        # Force the treeview area to fill the widget even if empty:
-        style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
         
-        # Get theme settings from CustomTkinter's ThemeManager:
-        theme = ctk.ThemeManager.theme
-        is_dark = 1 if mode.lower() == "dark" else 0
+        self.grid_populated = False
 
-        style.configure(
-            "Treeview",
-            rowheight=theme["Treeview"].get("rowheight", 25),
-            font=("Consolas", 13),
-            background=theme["Treeview"]["background"][is_dark],
-            fieldbackground=theme["Treeview"]["background"][is_dark],
-            foreground=theme["Treeview"]["foreground"][is_dark]
-        )
-        
-        style.configure(
-            "Treeview.Heading",
-            font=("Consolas", 13),
-            background=theme["Treeview"]["heading_background"][is_dark],
-            foreground="#000000"  # header text color
-        )
-        style.map("Treeview",
-                background=[("selected", theme["Treeview"]["selected_background"][is_dark])],
-                foreground=[("selected", theme["Treeview"]["selected_foreground"][is_dark])])
-  
-    
     def export_data(self):
         file_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
@@ -1168,12 +1188,17 @@ class ExcelAllTask:
 
     def show_loading(self):
         self.loading_label.lift()
+        self.loading_percentage_label.lift()
         self.loading_gif_running = True
+        self.loading_progress = 0  # reset progress
         self.animate_loading_gif(0)
+        self.update_loading_progress()
 
     def hide_loading(self):
         self.loading_label.lower()
+        self.loading_percentage_label.lower()
         self.loading_gif_running = False
+        self.loading_percentage_label.configure(text="Loading: 100%")
 
     def animate_loading_gif(self, idx):
         if not self.loading_gif_running:
@@ -1181,35 +1206,64 @@ class ExcelAllTask:
         frame = self.loading_frames[idx]
         self.loading_label.configure(image=frame, text="")
         next_idx = (idx + 1) % len(self.loading_frames)
+        # Continue updating the gif every 60ms.
         self.frame.after(60, lambda: self.animate_loading_gif(next_idx))
+
+    def update_loading_progress(self):
+        if not self.loading_gif_running:
+            return
+        # Increase the progress percentage until 99%
+        if self.loading_progress < 99:
+            self.loading_progress += 1
+        self.loading_percentage_label.configure(text=f"Loading: {self.loading_progress}%")
+        # Update every 100ms
+        self.frame.after(100, self.update_loading_progress)
+
 
     def show(self):
         self.frame.pack(fill="both", expand=True, padx=10, pady=10)
-        self.show_loading()
-        threading.Thread(target=self.populate_grid, daemon=True).start()
+        if not self.grid_populated:
+            self.show_loading()
+            threading.Thread(target=self.populate_grid, daemon=True).start()
 
     def hide(self):
         self.frame.pack_forget()
 
     def populate_grid(self):
+        # Hide the treeview while updating for faster rendering
+        self.tree.pack_forget()
         for row in self.tree.get_children():
             self.tree.delete(row)
-        global ccris_report
+        
         excel_data = ccris_report.excel_data
         if "part_1" not in excel_data:
             self.hide_loading()
             return
-        pg_list = pd.Series(excel_data["part_1"]["PG_RQS"].unique()).dropna().tolist()
-        batch_size = 100
-        max_rows = 500
-        for start in range(0, min(max_rows, len(pg_list)), batch_size):
-            end = min(start + batch_size, len(pg_list))
-            for i in range(start, end):
-                pg = pg_list[i]
-                task_summaries = self.get_task_summaries_for_pg(pg, excel_data)
-                self.tree.insert("", "end", values=[pg] + task_summaries)
-            self.frame.update_idletasks()
-        self.hide_loading()
+        
+        # Prepare PG_RQS list
+        pg_list = pd.Series(excel_data["part_1"]["PG_RQS"].unique()).dropna().astype(str).tolist()
+        rows_to_insert = []
+        total_pgs = len(pg_list)
+        
+        # Process each page and update the progress accurately
+        for i, pg in enumerate(pg_list):
+            task_summaries = self.get_task_summaries_for_pg(pg, excel_data)
+            rows_to_insert.append([pg] + task_summaries)
+            # Calculate progress based on pages processed
+            progress = int(((i + 1) / total_pgs) * 100)
+            # Schedule immediate update on the main thread
+            self.frame.after(0, lambda val=progress: self.loading_percentage_label.configure(text=f"Loading: {val}%"))
+        
+        # Now insert all rows on the main thread
+        def insert_all_rows():
+            for row in rows_to_insert:
+                self.tree.insert("", "end", values=row)
+            self.tree.pack(side="left", fill="both", expand=True)
+            self.hide_loading()
+            self.grid_populated = True  # Mark as done
+
+        self.tree.after(0, insert_all_rows)
+
 
     def get_latest_report_date(self, df_pg_part4, df_pg_part2):
         if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
@@ -1231,15 +1285,12 @@ class ExcelAllTask:
         # Task 1: Pending applications in last One month
         task1 = "-"
         pending_count_last_month = 0
-        pending_numbers_str = "-"
-        report_date_str = "-"
         if "part_4" in excel_data and pg:
             df_part4 = excel_data["part_4"]
             df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(latest_report_date):
-                    report_date_str = latest_report_date.strftime("%d-%m-%Y")
                     one_month_ago = latest_report_date - pd.DateOffset(months=1)
                     mask = (
                         (df_pg_part4["APPL_STS"] == "P") &
@@ -1247,12 +1298,9 @@ class ExcelAllTask:
                         (pd.to_datetime(df_pg_part4["DT_APPL"], errors="coerce") <= latest_report_date)
                     )
                     pending_count_last_month = mask.sum()
-                    pending_numbers = df_pg_part4.loc[mask, "REC_CTR"].tolist()
-                    if pending_numbers:
-                        pending_numbers_str = ", ".join(str(n) for n in pending_numbers)
-        task1 = f"{pending_count_last_month} (Rows: {pending_numbers_str}, Report: {report_date_str})"
+        task1 = f"{pending_count_last_month}"
 
-        # Task 2: CRDTCARD Outstanding (new logic)
+        # Task 2: Credit Card utilization
         task2 = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
@@ -1262,11 +1310,8 @@ class ExcelAllTask:
             df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
             df_pg_part2 = df_pg_part2.reset_index(drop=True)
 
-            # Find all CRDTCARD rows (these have the outstanding)
             crdtcard_rows = df_pg_part2[df_pg_part2["FCY_TYPE"] == "CRDTCARD"]
             crdtcard_outstanding = crdtcard_rows["IM_AM"].sum()
-
-            # For each CRDTCARD row, find the nearest previous row with approval date and take its limit
             used_approval_dates = set()
             total_limit = 0
             for idx in crdtcard_rows.index:
@@ -1278,18 +1323,16 @@ class ExcelAllTask:
                         found_date = appr_date
                         found_limit = df_pg_part2.loc[prev_idx, "IM_LIM_AM"]
                         break
-                # Only add the limit if this approval date hasn't been used yet
                 if found_date and found_date not in used_approval_dates:
                     total_limit += found_limit
                     used_approval_dates.add(found_date)
-
             if total_limit > 0:
                 ratio = crdtcard_outstanding / total_limit
                 task2 = f"{ratio:.2%}"
             else:
                 task2 = "No outstanding found"
-                
-        # Task 3: Oldest approval date for this PG and report date for this PG (like TaskTabBar)
+
+        # Task 3: CCRIS Age (earliest approval date)
         task3 = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
@@ -1297,19 +1340,9 @@ class ExcelAllTask:
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
             if not df_pg_part2["DT_APPL"].isna().all():
                 earliest_date = df_pg_part2["DT_APPL"].min()
-                # Get report date from part_4 if available
-                report_date = "-"
-                if "part_4" in excel_data:
-                    df_part4 = excel_data["part_4"]
-                    df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
-                    if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                        latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
-                        if pd.notna(latest_report_date):
-                            report_date = latest_report_date.strftime("%d-%m-%Y")
-                task3 = f"earliest: {earliest_date.strftime('%d-%m-%Y')}, report: {report_date}"
-        
+                task3 = f"{earliest_date.strftime('%d-%m-%Y')}"
 
-        # Task 4: Number of unsecured facilities in last 12 months
+        # Task 4: Number of Unsecured Facilities Approved in the last 12 months
         task4 = "-"
         latest_report_date = self.get_latest_report_date(df_pg_part4, df_pg_part2)
         if latest_report_date is not None and not df_pg_part2.empty:
@@ -1321,9 +1354,9 @@ class ExcelAllTask:
                 (df_pg_part2["DT_APPL"] <= latest_report_date)
             )
             unsecured_rows = df_pg_part2[mask]
-            task4 = f"{len(unsecured_rows)} (Rows: {', '.join(unsecured_rows['REC_CTR'].astype(str).tolist()) if not unsecured_rows.empty else '-'})"
+            task4 = f"{len(unsecured_rows) if not unsecured_rows.empty else '-'}"
 
-        # Task 5: Number of unsecured facilities in last 18 months
+        # Task 5: Number of Unsecured Facilities Approved in the last 18 months
         task5 = "-"
         if latest_report_date is not None and not df_pg_part2.empty:
             eighteen_months_ago = latest_report_date - pd.DateOffset(months=18)
@@ -1334,17 +1367,16 @@ class ExcelAllTask:
                 (df_pg_part2["DT_APPL"] <= latest_report_date)
             )
             unsecured_rows_18 = df_pg_part2[mask]
-            task5 = f"{len(unsecured_rows_18)} (Rows: {', '.join(unsecured_rows_18['REC_CTR'].astype(str).tolist()) if not unsecured_rows_18.empty else '-'})"
+            task5 = f"{len(unsecured_rows_18) if not unsecured_rows_18.empty else '-'}"
 
-        # Task 6: Thin CCRIS logic
-        task6 = "-"
+        # Task 6: Thin CCRIS
+        task6a = "-"
+        task6b = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
             df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-            # a. Calculate months between earliest date and report date
             earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
-            # Get report date from part_4 if available, else use latest DT_APPL
             report_date = None
             if "part_4" in excel_data:
                 df_part4 = excel_data["part_4"]
@@ -1355,39 +1387,51 @@ class ExcelAllTask:
                         report_date = latest_report_date
             if report_date is None and not df_pg_part2["DT_APPL"].isna().all():
                 report_date = df_pg_part2["DT_APPL"].max()
-            # Calculate months difference
             months_diff = "-"
             if earliest_date is not None and report_date is not None:
                 months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
-            # b. Only 1 facility?
             only_one_facility = "No"
             if df_pg_part2["FCY_TYPE"].nunique() == 1:
                 only_one_facility = "Yes"
-            task6 = f"a. Months: {months_diff}, b. Only 1 facility: {only_one_facility}"
+            task6a = f"{months_diff}"
+            task6b = f"{only_one_facility}"
 
-        # Task 7: Secured financing (Collateral ≠ 0)
-        task7 = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            secured = df_pg_part2[df_pg_part2["COL_TYPE"] != "0"]
-            count = len(secured)
-            outstanding = f"{secured['IM_AM'].sum():,.2f}" if not secured.empty else "0.00"
-            task7 = f"{count} (Outstanding: {outstanding})"
+        # Task 7 & 8: Group by date anchor logic
+        task7a = 0
+        task7b = 0.0
+        task8a = 0
+        task8b = 0.0
 
-        # Task 8: Unsecured financing (Collateral = 0)
-        task8 = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce")
-            unsecured = df_pg_part2[(df_pg_part2["COL_TYPE"] == "0") & (df_pg_part2["IM_AM"] > 0)]
-            count = len(unsecured)
-            outstanding = f"{unsecured['IM_AM'].sum():,.2f}" if not unsecured.empty else "0.00"
-            task8 = f"{count} (Outstanding: {outstanding})"
+        if not df_pg_part2.empty:
+            df_pg_part2 = df_pg_part2.reset_index(drop=True)
+            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
+            date_mask = ~df_pg_part2["DT_APPL"].isin(["-", "", None]) & ~df_pg_part2["DT_APPL"].isna()
+            group_indices = df_pg_part2.index[date_mask].tolist()
+            group_indices.append(len(df_pg_part2))  # sentinel for last group
 
-        return [task1, task2, task3, task4, task5, task6, task7, task8]
+            for i in range(len(group_indices) - 1):
+                start = group_indices[i]
+                end = group_indices[i + 1]
+                group = df_pg_part2.iloc[start:end]
+                if (group["COL_TYPE"] != "0").any():
+                    task7a += 1
+                    task7b += group["IM_AM"].sum()
+                elif (group["COL_TYPE"] == "0").all():
+                    task8a += 1
+                    task8b += group["IM_AM"].sum()
+
+        # Format output
+        task7a_str = f"{task7a}" if task7a > 0 else "-"
+        task7b_str = f"{task7b:,.2f}" if task7a > 0 else "-"
+        task8a_str = f"{task8a}" if task8a > 0 else "-"
+        task8b_str = f"{task8b:,.2f}" if task8a > 0 else "-"
+
+        return [
+            task1, task2, task3, task4, task5,
+            task6a, task6b,
+            task7a_str, task7b_str,
+            task8a_str, task8b_str
+        ]
 
  
 # --- Main Content Area ---
