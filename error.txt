@@ -1,0 +1,35 @@
+Error parsing XML for NU_PTL 534672: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 535377: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 542758: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 544102: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 549014: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 551291: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 551404: 'NoneType' object has no attribute 'strip'
+Error parsing XML for NU_PTL 551768: 'NoneType' object has no attribute 'strip'
+
+focus on ctos summaryview. i want to change overal. first i want to change tha we need to import ccris excel. then click refresh and display the data from ccris column + the ctos column. 
+
+cd "C:\Program Files\Oracle\VirtualBox\"
+
+VBoxManage.exe modifyvm "MacOS" --cpuidset 00000001 000106e5 00100800 0098e3fd bfebfbff
+
+VBoxManage setextradata "MacOS" "VBoxInternal/Devices/efi/0/Config/DmiSystemProduct" "iMac19,3"
+
+VBoxManage setextradata "MacOS" "VBoxInternal/Devices/efi/0/Config/DmiSystemVersion" "1.0"
+
+VBoxManage setextradata "MacOS" "VBoxInternal/Devices/efi/0/Config/DmiBoardProduct" "Iloveapple"
+
+VBoxManage setextradata "MacOS" "VBoxInternal/Devices/smc/0/Config/DeviceKey" "ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc"
+
+VBoxManage setextradata "MacOS" "VBoxInternal/Devices/smc/0/Config/GetKeyFromRealSMC" 0
+
+VBoxManage setextradata "MacOS" "VBoxInternal/TM/TSCMode" "RealTSCOffset"
+
+
+cd "C:\Program Files\Oracle\VirtualBox\"
+
+VBoxManage setextradata “MacOS” VBoxInternal2/EfiGraphicsResolution 1920x1080
+
+
+
+/Users/mishamsudin/Library/CloudStorage/OneDrive-AlRajhiBanking&InvestmentCorporation(Malaysia)Bhd/Desktop
