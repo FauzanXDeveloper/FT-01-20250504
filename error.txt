@@ -30,6 +30,573 @@ cd "C:\Program Files\Oracle\VirtualBox\"
 
 VBoxManage setextradata “MacOS” VBoxInternal2/EfiGraphicsResolution 1920x1080
 
+divisionBranch	department validation
+
+0190300		90300 - 90399 OR 00000
+0190400		90400 - 90499 OR 00000
+0190500		90500 - 90599 OR 00000
+0190600		90600 - 90699 OR 00000
+0190700		90700 - 90799 OR 00000
+0190800		90800 - 90899 OR 00000
+0190900		90900 - 90999 OR 00000
+0191000		91000 - 91099 OR 00000
+0191100		91100 - 91199 OR 00000
+0191200		91200 - 91299 OR 00000
+0192000		92000 - 92099 OR 00000
+0193000		93000 - 93099 OR 00000
+0194000		94000 - 94099 OR 00000
+0195000		95000 - 95099 OR 00000
+0198000		98000 - 98099 OR 00000
+0197000		97000 - 97099 OR 00000
+0190200		90200 - 90299 OR 00000
+0190100		90100 - 90199
+
+285679
+303892
+
+285621
+285679
+288115
+299286
+303892
+358439
+360598
+368045
+469815
+
+
+<?xml version="1.0" ?>
+<report>
+    <enq_report id="23233-20150407113456" report_type="CTOS" title="CTOS ENQUIRY">
+        <header>
+            <user id="c6rcops_xml">RETAIL CREDIT OPERATIONS</user>
+            <company id="B018000">AL RAJHI BANK RETAIL CREDIT OPERATIONS</company>
+            <account>B018019</account>
+            <tel>03-2301 7041</tel>
+            <fax>03-2170 7100</fax>
+            <enq_date>2015-04-07</enq_date>
+            <enq_time>11:34:57</enq_time>
+            <enq_status code="0">Success</enq_status>
+        </header>
+        <summary>
+            <enq_sum ptype="I" seq="1">
+                <field_sum name="IC_LCNO"/>
+                <field_sum name="NIC_BRNO">811031146109</field_sum>
+                <field_sum name="NAME">MOHD SHAHRULRAHMAN BIN REDZUAN</field_sum>
+                <field_sum name="ALIAS"/>
+                <field_sum name="STAT">15150</field_sum>
+                <field_sum name="REF">200162</field_sum>
+            </enq_sum>
+        </summary>
+        <enquiry seq="1">
+            <section id="A" title="SECTION A - IDENTITY NUMBER VERIFICATION">
+                <record rpttype="Id" seq="1">
+                    <data caption="Old I/C" name="ICNO"/>
+                    <data caption="" name="MATCH">(Not available)</data>
+                    <data caption="New I/C" name="NEWIC">811031146109</data>
+                    <data caption="" name="MATCH1">(NEW I/C MATCH)</data>
+                    <data caption="Name" name="NAME">MOHD SHAHRULRAHMAN BIN REDZUAN</data>
+                    <data caption="" name="MATCH2">(NAME MATCH)</data>
+                    <data caption="Address" name="ADDR">1115,KAMPUNG SELAYANG LAMA,BATU CAVES,68100 KUALA LUMPUR</data>
+                    <data caption="" name="ADDR1"/>
+                    <data caption="Remark" name="REMARK"/>
+                </record>
+            </section>
+            <section id="B" title="SECTION B - INTERNAL LIST/GROUP EXPOSURE">
+                <record rpttype="Ib" seq="1">
+                    <data caption="(INTERNAL LIST)" name="CODE">INTERNAL LIST OF LEGAL CASES</data>
+                    <data caption="NAME" name="NAME">MOHD SHAHRULRAHMAN BIN REDZUAN</data>
+                    <data caption="" name="MATCH">(NEW IC MATCH)</data>
+                    <data caption="ALIAS" name="ALIAS"/>
+                    <data caption="I/C NO" name="IC_LCNO"/>
+                    <data caption="NEW IC" name="NIC_BRNO">811031146109</data>
+                    <data caption="REF" name="REF">SUMMONS DIRECTED TO  (72A-769-2010)</data>
+                    <data caption="FIRM" name="CONUM"/>
+                    <data caption="" name="CONAME"/>
+                    <data caption="REMARK" name="REMARK">PLAINTIFF-BANK KERJASAMA RAKYAT-DAMANSARA UTAMA BR</data>
+                    <data caption="" name="REMARK2">ACTION DATED:25-05-2010  HEARING:28-06-2010</data>
+                    <data caption="" name="REMARK3">SETTLED-ACCOUNT FULLY SETTLED ON 041113</data>
+                    <data caption="AMOUNT" name="AMOUNT">18641  SOURCE:</data>
+                    <data caption="ENTRY DATE" name="ENTRY">2014-10-14</data>
+                </record>
+            </section>
+            <section id="C" title="SECTION C DIRECTORSHIPS AND BUSINESS INTERESTS">
+                <record rpttype="IK" seq="1">
+                    <data caption="" name="EXTRANAME">SM UNIVERSAL RESOURCES</data>
+                    <data caption="" name="EXTRACONUM">SA0332608T</data>
+                    <data caption="OBJECT" name="EXTRAOBJECT">MENJUAL MAKANAN DAN MINUMAN, PERKHIDMATAN PENGURUSAN, PERKHIDMATA</data>
+                    <data caption="INCORPORATION" name="EXTRAINCDATE">31-03-2015</data>
+                    <data caption="NAME" name="NAME">MOHD SHAHRULRAHMAN BIN REDZUAN</data>
+                    <data caption="I/C No." name="IC_LCNO"/>
+                    <data caption="NEWIC/PASSPORT" name="NIC_BRNO">811031146109</data>
+                    <data caption="STATUS" name="POSITION">PARTNER</data>
+                    <data caption="SEARCH DATED" name="CPODATE">2015-04-06</data>
+                    <data caption="REMARK" name="REMARK1"/>
+                    <data caption="ADDRESS" name="ADDR">A808 KONDO DE ROZELLE,JALAN MERBAH 10/1,SEKSYEN 10</data>
+                </record>
+            </section>
+            <section id="D" title="SECTION D">
+                <record rpttype="I2" seq="1">
+                    <data caption="" name="ZTITLE">SUMMONS - DIRECTED TO</data>
+                    <data caption="SPECIAL REMARK" name="ZSPECIAL">ACCOUNT FULLY SETTLED ON 041113</data>
+                    <data caption="NAME" name="NAME">MOHD SHAHRULRAHMAN BIN REDZUAN</data>
+                    <data caption="" name="MATCH">(NEW IC MATCH)</data>
+                    <data caption="ALIAS" name="ALIAS"/>
+                    <data caption="I/C NO" name="IC_LCNO"/>
+                    <data caption="NEW IC" name="NIC_BRNO">811031146109</data>
+                    <data caption="REMARK" name="REMARK">BORROWER.ACCOUNT FULLY SETTLED ON 041113</data>
+                    <data caption="ADDRESS" name="ADDR">1115,KG SELAYANG LAMA,BT CAVES,SEL</data>
+                    <data caption="FIRM" name="FIRMCO"/>
+                    <data caption="PLAINTIFF" name="EXPART">BANK KERJASAMA RAKYAT-DAMANSARA UTAMA BR</data>
+                    <data caption="CASE NO" name="NBKNO">72A-769-2010</data>
+                    <data caption="" name="ZCOURT">MAGISTRATE SHAH ALAM</data>
+                    <data caption="ACTION DATE" name="NTDATE">25-05-2010</data>
+                    <data caption="" name="ZNTPAP"/>
+                    <data caption="HEARING DATE" name="HEAR">28-06-2010</data>
+                    <data caption="AMOUNT" name="AMOUNT">18641</data>
+                    <data caption="SOLCTR" name="LAWNAME">TAWFEEK BADJENID &amp; PARTNERS</data>
+                    <data caption="" name="LAWADD1">SUITE E-09-20,AMCORP BUSINESS</data>
+                    <data caption="TEL" name="LAWTELN">03-79600588/582/529</data>
+                    <data caption="" name="LAWADD2">9TH FLR,MENARA MELAWANGI</data>
+                    <data caption="REF" name="LAWREF">TBP/PJ/BKR/DMS/L/101509-10E</data>
+                    <data caption="" name="LAWADD3">18,JLN PERSIARAN BARAT 46050 PETALING JAYA</data>
+                    <data caption="PLAINTIFF CONTACT" name="CEDCONNAME">BANK KERJASAMA RAKYAT MALAYSIA BHD</data>
+                    <data caption="" name="CEDCONADD1">DAMANSARA UTAMA BRANCH,</data>
+                    <data caption="TEL" name="CEDCONTELN">03-77298205/8253</data>
+                    <data caption="" name="CEDCONADD2">1,JALAN SS 21/56B,DAMANSARA UTAMA,</data>
+                    <data caption="REF" name="CEDREF">620580119809</data>
+                    <data caption="" name="CEDCONADD3">47400 PETALING JAYA </data>
+                </record>
+            </section>
+            <section id="E" title="SECTION E - TRADE REFERENCE &amp; GENERAL REFERENCE">
+                <record rpttype="Ih" seq="1">
+                    <data caption="REFEREE" name="REF_COMNAME">BUKIT KIARA RESORT BHD</data>
+                    <data caption="INCORPORATION DATE" name="INCDATE">28-03-1988</data>
+                    <data caption="NATURE OF BUSINESS" name="OBJECT">PROMOTION OF ENGINE ACTIVITIES AND HEALTH RESORT</data>
+                    <data caption="ADDRESS" name="REF_ADDR">JLN BKT KIARA,OFF JLN DAMANSARA,KL</data>
+                    <data caption="" name="TR_URL"/>
+                </record>
+            </section>
+        </enquiry>
+    </enq_report>
+    <tr_report preview="0" type="TR" title="Trade Reference">
+        <header>
+            <date>2015-04-07</date>
+            <req_name>RETAIL CREDIT OPERATIONS</req_name>
+            <req_email/>
+            <req_com_name>AL RAJHI BANK RETAIL CREDIT OPERATIONS</req_com_name>
+            <req_com_addr>LEVEL 13, MENARA CHAN,138,JLN AMPANG,KL</req_com_addr>
+            <ref_com_name>P1.COM SDN BHD</ref_com_name>
+            <ref_email/>
+            <ref_com_bus>TO CARRY ON GENERAL TRADING OF TELECOMMUNICATION PRODUCTS</ref_com_bus>
+            <report_no>9284372</report_no>
+            <ic_lcno/>
+            <nic_brno>840319035240</nic_brno>
+            <name>ASHWATI BTE YUSOF</name>
+        </header>
+        <enquiry account_no="102870417">
+            <section id="relationship">
+                <data name="rel_type">CUSTOMER</data>
+                <data name="rel_status">Under Recovery Action</data>
+                <data name="account_no">102870417</data>
+                <data name="rel_syear">2010</data>
+                <data name="rel_smonth">1</data>
+                <data name="rel_sday">3</data>
+            </section>
+            <section id="sponsor"/>
+            <section id="account_status">
+                <data name="account_no">102870417</data>
+                <data name="statement_date">2013-03-29</data>
+                <data name="account_rating">4</data>
+                <data name="account_term">-1</data>
+                <data name="account_limit"/>
+                <data name="account_status">Under Recovery Action</data>
+                <data name="debtor_name">ASHWATI BTE YUSOF</data>
+                <data name="debtor_ic_lcno"/>
+                <data name="debtor_nic_brno">840319035240</data>
+                <data name="address">11-10-1, SURIA AVENUE APARTMENT, JALAN DAWAI 16/2, SHAH ALAM</data>
+                <data name="debt_type"/>
+                <data name="age">
+                    <item name="30">           0.00</item>
+                    <item name="60">           0.00</item>
+                    <item name="90">           0.00</item>
+                    <item name="120">           0.00</item>
+                    <item name="150">           0.00</item>
+                    <item name="180">           0.00</item>
+                    <item name="210">         966.00</item>
+                </data>
+            </section>
+            <section id="return_cheque" status="Not Provided"/>
+            <section id="legal_action" status="Not Provided"/>
+            <section id="contact">
+                <data name="reference">102870417</data>
+                <data name="name">creditinquiry@packet-1.com</data>
+                <data name="address">PACKET HUB,159,JLN TEMPLER,PETA.LING JAYA,SEL</data>
+                <data name="tel_no"/>
+                <data name="fax_no">03-74508899</data>
+                <data name="email"/>
+                <data name="type_code">4</data>
+                <data name="type_desc">Please ask the subject to contact us.</data>
+            </section>
+        </enquiry>
+    </tr_report>
+</report>
+
+
+552050
+551404
+525194
+
+
+<?xml version="1.0" ?>
+<report xmlns="http://ws.cmctos.com.my/ctosnet/response" version="5.8.0">
+    <enq_report id="BB-6988-20250203112357" report_type="CTOS" title="CTOS ENQUIRY">
+        <header>
+            <user id="rajhi_xml">RETAIL CREDIT OPERATIONS</user>
+            <company id="B018000">AL RAJHI BANK RETAIL CREDIT OPERATIONS</company>
+            <account>B018019</account>
+            <tel>03-2301 7041</tel>
+            <fax>03-2170 7100</fax>
+            <enq_date>2025-02-03</enq_date>
+            <enq_time>11:23:57</enq_time>
+            <enq_status code="1">SUCCESS</enq_status>
+        </header>
+        <summary>
+            <enq_sum ptype="I" pcode="" seq="1">
+                <name>ABDUL RAHMAN BIN YUSOF</name>
+                <ic_lcno/>
+                <nic_brno>811218105411</nic_brno>
+                <stat>1510</stat>
+                <dd_index>8200</dd_index>
+                <mphone_nos>
+                    <mphone_no>#</mphone_no>
+                </mphone_nos>
+                <ref_no>299482</ref_no>
+                <dist_code/>
+                <purpose code="2">Credit evaluation on director/shareholder with consent</purpose>
+                <include_ctos>1</include_ctos>
+                <include_trex>1</include_trex>
+                <include_ssm_retention>0</include_ssm_retention>
+                <include_etr_plus>2</include_etr_plus>
+                <enq_status code="1">SUCCESS</enq_status>
+                <enq_code code="1">CTOS Report</enq_code>
+            </enq_sum>
+        </summary>
+        <enquiry seq="1">
+            <section_summary>
+                <ctos>
+                    <bankruptcy status="0"/>
+                    <legal total="0" value="0"/>
+                    <legal_personal_capacity total="0" value="0"/>
+                    <legal_non_personal_capacity total="0" value="0"/>
+                </ctos>
+                <tr>
+                    <trex_ref negative="0" positive="0"/>
+                </tr>
+                <ccris>
+                    <application total="0" approved="0" pending="0"/>
+                    <facility total="0" arrears="0" value="0"/>
+                    <special_attention accounts="0"/>
+                </ccris>
+                <dcheqs entity="0"/>
+            </section_summary>
+            <section_a data="true" title="SECTION A - IDENTITY NUMBER VERIFICATION">
+                <record rpttype="Id" seq="1">
+                    <name match="1">ABDUL RAHMAN BIN YUSOF</name>
+                    <ic_lcno/>
+                    <nic_brno match="1">811218105411</nic_brno>
+                    <addr>LOT 8446,KG CHE PUTEH,BERUAS,PERAK</addr>
+                    <source>SSM</source>
+                    <nationality/>
+                    <birth_date>18-12-1981</birth_date>
+                </record>
+            </section_a>
+            <section_b title="SECTION B - INTERNAL LIST" data="true">
+                <history seq="1" rpttype="EH" year="2025">
+                    <period month="1">
+                        <entity type="FI" value="1"/>
+                        <entity type="NON-FI" value="1"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="2">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="3">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="4">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="5">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="6">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="7">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="8">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="9">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="10">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="11">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="12">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                </history>
+                <history seq="2" rpttype="EH" year="2024">
+                    <period month="1">
+                        <entity type="FI" value="1"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="2">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="3">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="4">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="5">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="6">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="7">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="8">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="9">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="10">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="11">
+                        <entity type="FI" value="2"/>
+                        <entity type="NON-FI" value="0"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                    <period month="12">
+                        <entity type="FI" value="0"/>
+                        <entity type="NON-FI" value="1"/>
+                        <entity type="LAWYER" value="0"/>
+                    </period>
+                </history>
+                <record rpttype="Ib" seq="1">
+                    <title>AL RAJHI BANK - INTERNAL LIST OF LEGAL CASES</title>
+                    <name>ABDUL RAHMAN BIN YUSOF</name>
+                    <alias/>
+                    <ic_lcno/>
+                    <nic_brno>811218105411</nic_brno>
+                    <ref>SUMMONS DIRECTED TO  (A72NCC2342010-2013)</ref>
+                    <firm/>
+                    <remark1>PLAINTIFF-UNITED OVERSEAS BANK-CREDIT CARD</remark1>
+                    <remark2>ACTION DATED:09-10-2013  HEARING:06-11-2013</remark2>
+                    <remark3/>
+                    <amount>4306  SOURCE:</amount>
+                    <entry>2014-10-14</entry>
+                </record>
+            </section_b>
+            <section_c title="SECTION C - DIRECTORSHIPS AND BUSINESS INTERESTS" data="true">
+                <record rpttype="IK" seq="1">
+                    <company_name>ARCAEMAS ENTERPRISE</company_name>
+                    <additional_registration_no>200803213750</additional_registration_no>
+                    <local>IP0289011X</local>
+                    <object>DECORATION SERVICES,BUILDING RENOVATION &amp; AGRICULTURE</object>
+                    <incdate>14-10-2008</incdate>
+                    <expdate>16-02-2011</expdate>
+                    <name>ABDUL RAHMAN BIN YUSOF</name>
+                    <ic_lcno/>
+                    <nic_brno>811218105411</nic_brno>
+                    <addr>LOT 8446,KG CHE PUTEH,BERUAS,PERAK</addr>
+                    <position>SOLE PROPRIETOR</position>
+                    <cpo_date>05-10-2010</cpo_date>
+                    <remark/>
+                    <status/>
+                </record>
+            </section_c>
+            <section_d title="SECTION D" data="true">
+                <record rpttype="I2" seq="1" status="1">
+                    <title>SUMMONS - DIRECTED TO</title>
+                    <special_remark>ACCOUNT FULLY SETTLED ON 021223</special_remark>
+                    <name match="1">MOHD REEZAL BIN ABD RASHID</name>
+                    <alias/>
+                    <addr>11A,LRG SEJAHTERA 6,TMN SEJAHTERA,14000 BKT MERTAJAM,PENANG</addr>
+                    <ic_lcno match="1">A3046761</ic_lcno>
+                    <nic_brno match="1">750626145141</nic_brno>
+                    <case_no>WA-A72NCC-10903-05/2022</case_no>
+                    <court_detail>MAGISTRATE KUALA LUMPUR</court_detail>
+                    <firm/>
+                    <plaintiff>RHB BANK-RETAIL COLLECTION &amp; RECOVERY</plaintiff>
+                    <action>
+                        <date>12-05-2022</date>
+                        <source_detail>e-court filing 13-06-2022</source_detail>
+                    </action>
+                    <hear_date>13-06-2022</hear_date>
+                    <amount>2162</amount>
+                    <remark>ACCOUNT FULLY SETTLED ON 021223</remark>
+                    <lawyer>
+                        <name>ANAD &amp; NORAINI</name>
+                        <add1>SUITE 12.01-12.08,LEVEL 12</add1>
+                        <add2>THE HERITAGE HOUSE</add2>
+                        <add3>33,JALAN YAH AH SHAK</add3>
+                        <add4>50300 KUALA LUMPUR</add4>
+                        <tel>03-26918000</tel>
+                        <ref>LD/NUR/RHB-WRIT/060522-09</ref>
+                    </lawyer>
+                    <cedcon>
+                        <name>RHB BANK BHD</name>
+                        <add1>GCB COLLECTIONS &amp; RECOVERY</add1>
+                        <add2>LEVEL 5,CRYSTAL PLAZA</add2>
+                        <add3>NO. 4,JALAN 51A/223</add3>
+                        <add4>46100 PETALING JAYA,SELANGOR</add4>
+                        <tel>03-74982222/74982323</tel>
+                        <ref>7081535065021521/4029886041204</ref>
+                    </cedcon>
+                    <settlement>
+                        <code>ACCOUNT FULLY SETTLED</code>
+                        <date>02-12-2023</date>
+                        <source>FROM DEFENDANT</source>
+                        <source_date>08-12-2023</source_date>
+                    </settlement>
+                    <latest_status/>
+                    <subject_cmt/>
+                    <cra_cmt/>
+                </record>
+            </section_d>
+            <section_d2 title="SECTION D2 - SUBJECT AS PLAINTIFF" data="false"/>
+            <section_d4 title="SECTION D4 - NON PERSONAL CAPACITY" data="false"/>
+            <section_etr_plus title="ETR PLUS" data="false"/>
+            <section_e title="SECTION E - TRADE REFEREES" data="true">
+                <enquiry seq="1" account_no="824001342281" tref_id="10690931">
+                    <subject>
+                        <ref_com_name>COURTS (MALAYSIA) SDN BHD : SUPPORT CENTRE (eTR)</ref_com_name>
+                        <ref_com_bus>RETAILING OF ELECTRONIC AND ELECTRICAL APPLIANCES</ref_com_bus>
+                        <party_type>I</party_type>
+                        <ic_lcno/>
+                        <nic_brno>801224025734</nic_brno>
+                        <name>HASLINA BTE HASHIM</name>
+                        <address/>
+                        <tref_date>2019-06-07</tref_date>
+                    </subject>
+                    <relationship>
+                        <rel_type code="10">CUSTOMER</rel_type>
+                        <rel_status code="5">Defaulter</rel_status>
+                        <account_no>824001342281</account_no>
+                        <rel_syear>2013</rel_syear>
+                        <rel_smonth>3</rel_smonth>
+                        <rel_sday>4</rel_sday>
+                        <remark>Write Off</remark>
+                    </relationship>
+                    <sponsor/>
+                    <account_status>
+                        <account_no>824001342281</account_no>
+                        <statement_date>2019-05-31</statement_date>
+                        <account_rating code="4">Not Satisfactory</account_rating>
+                        <account_term>30</account_term>
+                        <account_limit>0</account_limit>
+                        <account_status code="5">Defaulter</account_status>
+                        <debtor_name>HASLINA BTE HASHIM</debtor_name>
+                        <debtor_ic_lcno/>
+                        <debtor_nic_brno>801224025734</debtor_nic_brno>
+                        <address/>
+                        <debt_type code="12">Dues outstanding</debt_type>
+                        <last_paid_amount>0.00</last_paid_amount>
+                        <age>
+                            <age_30>0.00</age_30>
+                            <age_60>0.00</age_60>
+                            <age_90>0.00</age_90>
+                            <age_120>0.00</age_120>
+                            <age_150>0.00</age_150>
+                            <age_180>0.00</age_180>
+                            <age_over_180>440.35</age_over_180>
+                        </age>
+                    </account_status>
+                    <return_cheques/>
+                    <legal_action/>
+                    <cra_comment/>
+                    <subject_comments/>
+                    <referee_contact>
+                        <contact_ref/>
+                        <contact_name/>
+                        <contact_add>36,JLN GENTING KLANG,SETAPAK,KL</contact_add>
+                        <contact_telno>03-40268736</contact_telno>
+                        <contact_nature_of_business>RETAILING OF ELECTRONIC AND ELECTRICAL APPLIANCES</contact_nature_of_business>
+                        <contact_faxno>03-40268688</contact_faxno>
+                        <contact_email/>
+                        <contact_type code="4">Please ask the subject to contact us.</contact_type>
+                    </referee_contact>
+                </enquiry>
+            </section_e>
+        </enquiry>
+    </enq_report>
+</report>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /Users/mishamsudin/Library/CloudStorage/OneDrive-AlRajhiBanking&InvestmentCorporation(Malaysia)Bhd/Desktop
