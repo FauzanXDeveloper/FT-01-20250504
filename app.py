@@ -26,6 +26,25 @@ import psutil
 import win32gui
 import win32con
 
+def count_section_presence(dom, section_id):
+    """
+    Returns 1 if <section id="section_id"> exists, 0 otherwise.
+    """
+    for section in dom.getElementsByTagName("section"):
+        if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == section_id:
+            return 1
+    return 0
+
+def count_records_in_section(dom, section_id):
+    """
+    Returns the number of <record> in <section id="section_id">.
+    """
+    count = 0
+    for section in dom.getElementsByTagName("section"):
+        if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == section_id:
+            count += len(section.getElementsByTagName("record"))
+    return count
+
 def is_integrate_running():
         """
         Check if a process running integrate.py exists.
@@ -34,7 +53,7 @@ def is_integrate_running():
         for proc in psutil.process_iter(attrs=["cmdline"]):
             try:
                 cmdline = proc.info["cmdline"]
-                if cmdline and "integrate.py" in " ".join(cmdline):
+                if cmdline and "integrate.exe" in " ".join(cmdline):
                     return proc
             except Exception:
                 continue
@@ -133,18 +152,25 @@ class CTOSReportApp(ctk.CTk):
             command=self.toggle_sidebar
         )
         self.hamburger_btn.pack(pady=(10, 0), padx=10, anchor="nw")
+        
+        self.importing_icon = ctk.CTkImage(Image.open("Picture/importing.png"), size=(32, 32))
+        self.xml_icon = ctk.CTkImage(Image.open("Picture/xml.png"), size=(32, 32))  # Try bigger size
+        self.tab_ccris_icon = ctk.CTkImage(Image.open("Picture/tab_ccris.png"), size=(32, 32))
+        self.summary_icon = ctk.CTkImage(Image.open("Picture/summary.png"), size=(32, 32))
+        self.back_to_main_icon = ctk.CTkImage(Image.open("Picture/back_to_main.png"), size=(32, 32))
 
         # Sidebar buttons with improved spacing & bigger size
         button_font = ctk.CTkFont(family="Segoe UI", size=16, weight="bold")  # increased font size
         self.import_button = ctk.CTkButton(
             self.sidebar,
-            text="📂 Import Excel",
+            text="Import Excel",
             command=self.import_excel,
             font=button_font,
-            width=150,      # increased width
-            height=50       # increased height
+            width=150,
+            height=50,
+            image=None,
         )
-        self.import_button.pack(pady=20, padx=20)
+        self.import_button.pack(pady=10, padx=0)
         
         self.xml_format_button = ctk.CTkButton(
             self.sidebar,
@@ -152,9 +178,10 @@ class CTOSReportApp(ctk.CTk):
             command=self.show_xml_format,
             font=button_font,
             width=150,
-            height=50
+            height=50,
+            image=None,
         )
-        self.xml_format_button.pack(pady=20, padx=20)
+        self.xml_format_button.pack(pady=10, padx=0)
         
         self.ctos_report_button = ctk.CTkButton(
             self.sidebar,
@@ -162,30 +189,33 @@ class CTOSReportApp(ctk.CTk):
             command=self.show_ctos_report,
             font=button_font,
             width=150,
-            height=50
+            height=50,
+            image=None,
         )
-        self.ctos_report_button.pack(pady=20, padx=20)
-        
+        self.ctos_report_button.pack(pady=10, padx=0)
+
         self.ctos_summary_button = ctk.CTkButton(
             self.sidebar,
             text="CTOS Summary",
             command=self.show_ctos_summary,
             font=button_font,
             width=150,
-            height=50
+            height=50,
+            image=None,
         )
-        self.ctos_summary_button.pack(pady=20, padx=20)
-        
+        self.ctos_summary_button.pack(pady=10, padx=0)
+
         self.main_app_button = ctk.CTkButton(
             self.sidebar,
-            text="🔙 Back to Main",
+            text="Back to Main",
             command=self.show_main_app,
             font=button_font,
             width=150,
-            height=50
+            height=50,
+            image=None,
         )
-        self.main_app_button.pack(pady=20, padx=20)
-        
+        self.main_app_button.pack(pady=10, padx=0)
+
         self.sidebar_buttons = [
             self.import_button,
             self.xml_format_button,
@@ -232,19 +262,72 @@ class CTOSReportApp(ctk.CTk):
         self.show_xml_format()
         
     
+    # In toggle_sidebar:
     def toggle_sidebar(self):
         if self.sidebar_expanded:
-            for btn in self.sidebar_buttons:
-                btn.pack_forget()
-            # Also hide mode toggle? Optionally keep it visible.
             self.sidebar.configure(width=self.SIDEBAR_SHRUNK_WIDTH)
+            # Show only icons, hide text, make buttons transparent and fit icon
+            for btn, icon in [
+                (self.import_button, self.importing_icon),
+                (self.xml_format_button, self.xml_icon),
+                (self.ctos_report_button, self.tab_ccris_icon),
+                (self.ctos_summary_button, self.summary_icon),
+                (self.main_app_button, self.back_to_main_icon)
+            ]:
+                btn.configure(
+                    text="",
+                    image=icon,
+                    width=48,
+                    height=48,
+                    anchor="center",
+                    font=("Arial", 1)
+                )
             self.sidebar_expanded = False
         else:
-            for btn in self.sidebar_buttons:
-                btn.pack(pady=15, padx=20)
             self.sidebar.configure(width=self.SIDEBAR_EXPANDED_WIDTH)
+            # Show only text, hide icons, restore button width/height
+            self.import_button.configure(
+                text="Import Excel",
+                image=None,
+                width=150,
+                height=50,
+                anchor="w",
+                font=("Segoe UI", 16, "bold")
+            )
+            self.xml_format_button.configure(
+                text="XML Format",
+                image=None,
+                width=150,
+                height=50,
+                anchor="w",
+                font=("Segoe UI", 16, "bold")
+            )
+            self.ctos_report_button.configure(
+                text="CTOS Report",
+                image=None,
+                width=150,
+                height=50,
+                anchor="w",
+                font=("Segoe UI", 16, "bold")
+            )
+            self.ctos_summary_button.configure(
+                text="CTOS Summary",
+                image=None,
+                width=150,
+                height=50,
+                anchor="w",
+                font=("Segoe UI", 16, "bold")
+            )
+            self.main_app_button.configure(
+                text="Back to Main",
+                image=None,
+                width=150,
+                height=50,
+                anchor="w",
+                font=("Segoe UI", 16, "bold")
+            )
             self.sidebar_expanded = True
-    
+                     
     def toggle_mode(self):
         customtkinter.set_default_color_theme("Themes/patina.json")
         if self.current_theme == "dark":
@@ -409,14 +492,14 @@ class CTOSReportView(ctk.CTkFrame):
             hover_color="#444",
             command=self.go_to_previous
         )
-        self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        self.prev_btn.grid(row=0, column=1, padx=10, pady=5, sticky="e")
 
         self.ttk_style = ttk.Style()
         self.ttk_style.theme_use('clam')
         self.account_combobox = ttk.Combobox(
             self.control_frame, textvariable=self.account_var, values=[], width=25
         )
-        self.account_combobox.grid(row=0, column=1, padx=10, pady=5)
+        self.account_combobox.grid(row=0, column=2, padx=10, pady=5)
         self.account_combobox.bind("<<ComboboxSelected>>", self.display_data)
         self.account_combobox.bind("<KeyRelease>", self.on_account_typing)
 
@@ -428,11 +511,11 @@ class CTOSReportView(ctk.CTkFrame):
             hover_color="#444",
             command=self.go_to_next
         )
-        self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
+        self.next_btn.grid(row=0, column=3, padx=10, pady=5, sticky="w")
 
         self.export_icon = ctk.CTkImage(Image.open("Picture/export.png"), size=(24, 24))
         self.convert_button = ctk.CTkButton(self.control_frame, text="Old Ctos", image=self.export_icon, command=self.convert_to_excel)
-        self.convert_button.grid(row=0, column=4, padx=5)
+        self.convert_button.grid(row=0, column=0, padx=5)
         self.convert_new_button = ctk.CTkButton(
             self.control_frame,
             text="New CTOS",
@@ -440,20 +523,6 @@ class CTOSReportView(ctk.CTkFrame):
             command=self.convert_new_ctos_to_excel
         )
         self.convert_new_button.grid(row=0, column=5, padx=5)
-
-        self.dd_index_var = tk.StringVar(value="-")
-        self.dd_index_label = ctk.CTkLabel(
-            self,
-            textvariable=self.dd_index_var,
-            width=48,
-            height=48,
-            fg_color="#1976d2",
-            text_color="#fff",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            corner_radius=12,
-            anchor="center"
-        )
-        self.dd_index_label.place(x=20, y=80)
 
         # --- Treeview for displaying parsed XML data ---
         self.tree_frame = ctk.CTkFrame(self)
@@ -572,17 +641,6 @@ class CTOSReportView(ctk.CTkFrame):
         xml_data = current_row.get("XML", "")
         if pd.isna(xml_data) or not xml_data.strip():
             xml_data = "<No XML Data>"
-
-        # Extract dd_index
-        dd_index_val = "-"
-        try:
-            dom = xml.dom.minidom.parseString(clean_malformed_xml(xml_data))
-            dd_index_nodes = dom.getElementsByTagName("dd_index")
-            if dd_index_nodes and dd_index_nodes[0].firstChild:
-                dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
-        except Exception:
-            pass
-        self.dd_index_var.set(dd_index_val)
 
         self.tree.delete(*self.tree.get_children())
         try:
@@ -923,6 +981,9 @@ class CTOSReportView(ctk.CTkFrame):
                 self.display_data()
 
     def convert_new_ctos_to_excel(self):
+        # Ask for confirmation before starting the export
+        if not messagebox.askyesno("Confirm Export", "Are you sure you want to download the New CTOS Excel?"):
+            return
         self.is_converting = True
         self.show_progress_popup()
         threading.Thread(target=self.convert_new_ctos_to_excel_thread, daemon=True).start()
@@ -1409,6 +1470,9 @@ class CTOSReportView(ctk.CTkFrame):
         self.after(0, self.destroy_popup)
 
     def convert_to_excel(self):
+        # Ask for confirmation before starting the export
+        if not messagebox.askyesno("Confirm Export", "Are you sure you want to download the Old CTOS Excel?"):
+            return
         self.is_converting = True
         self.show_progress_popup()
         threading.Thread(target=self.convert_to_excel_thread, daemon=True).start()
@@ -1419,6 +1483,8 @@ class CTOSReportView(ctk.CTkFrame):
         # Removed: self.popup.update()  # <-- Avoid explicit update call here
         
     def convert_to_excel_thread(self):
+        
+        
         # Define columns for old CTOS sections
         old_section_columns = {
             "Header&Summary": ["NU_PTL", "user", "company", "account", "tel", "fax", "enq_date", 
@@ -1811,20 +1877,6 @@ class XMLFormatView(ctk.CTkFrame):
         self.refresh_button = ctk.CTkButton(self, text="Refresh Data", command=self.refresh_data)
         self.refresh_button.pack(pady=10)
         
-        # dd_index badge (square)
-        self.dd_index_var = tk.StringVar(value="-")
-        self.dd_index_label = ctk.CTkLabel(
-            self,
-            textvariable=self.dd_index_var,
-            width=48,
-            height=48,
-            fg_color="#1976d2",
-            text_color="#fff",
-            font=ctk.CTkFont(size=18, weight="bold"),
-            corner_radius=12,
-            anchor="center"
-        )
-        self.dd_index_label.place(x=20, y=80)
     
     def on_account_typing(self, event):
         typed = self.account_var.get().lower()
@@ -1924,16 +1976,6 @@ class XMLFormatView(ctk.CTkFrame):
             self.current_index = self.all_accounts.index(selected_account)
             raw_xml = self.xml_data[selected_account]
 
-            # Extract dd_index
-            dd_index_val = "-"
-            try:
-                dom = xml.dom.minidom.parseString(clean_malformed_xml(raw_xml))
-                dd_index_nodes = dom.getElementsByTagName("dd_index")
-                if dd_index_nodes and dd_index_nodes[0].firstChild:
-                    dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
-            except Exception:
-                pass
-            self.dd_index_var.set(dd_index_val)
 
             try:
                 cleaned_xml = clean_malformed_xml(raw_xml)
@@ -1976,6 +2018,7 @@ class CTOSSummaryView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
+        self.search_var = tk.StringVar()
         # New headers for columns
         self.columns = [
             "Section A", "Section B", "Section C", "Section D", 
@@ -1989,17 +2032,27 @@ class CTOSSummaryView(ctk.CTkFrame):
             self, text="CTOS Summary", font=ctk.CTkFont(size=16, weight="bold")
         )
         header_label.pack(pady=(10, 5))
+
+        # --- Search Bar ---
+        search_frame = ctk.CTkFrame(self)
+        search_frame.pack(pady=5)
+        ctk.CTkLabel(search_frame, text="Search NU_PTL:").pack(side="left", padx=(5, 2))
+        search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, width=200)
+        search_entry.pack(side="left", padx=(0, 5))
+        search_entry.bind("<Return>", self.search_summary)
+        search_btn = ctk.CTkButton(search_frame, text="Search", command=self.search_summary)
+        search_btn.pack(side="left")
+
         refresh_button = ctk.CTkButton(
             self, text="Refresh Summary", command=self.refresh_summary, width=150, height=30
         )
         refresh_button.pack(pady=5)
-        # Add progress bar
         self.progress_bar = ctk.CTkProgressBar(self, mode="determinate")
         self.progress_bar.pack(fill="x", padx=10, pady=(5,10))
         self.progress_bar.set(0)
         self.table_frame = ctk.CTkFrame(self)
         self.table_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        self.create_summary_table({})  # Initially blank
+        self.create_summary_table({})
 
     def refresh_summary(self):
         data = self.app.shared_data
@@ -2007,45 +2060,53 @@ class CTOSSummaryView(ctk.CTkFrame):
             messagebox.showerror("Error", "No shared data available for summary!")
             return
 
-        # Reset progress bar before starting
         self.progress_bar.set(0)
         def background_task():
             summary = self.calculate_summary(data)
+            self.summary_data = summary  # Store for searching
             self.after(0, lambda: self.create_summary_table(summary))
-        
         threading.Thread(target=background_task, daemon=True).start()
+        
+    def search_summary(self, event=None):
+        search_value = self.search_var.get().strip().lower()
+        if not hasattr(self, "summary_data") or not self.summary_data:
+            return
+        if not search_value:
+            self.create_summary_table(self.summary_data)
+            return
+        filtered = {k: v for k, v in self.summary_data.items() if search_value in str(k).lower()}
+        self.create_summary_table(filtered)
 
     def calculate_summary(self, records):
-        from collections import defaultdict
         import xml.dom.minidom
+
+        def count_records_in_section(dom, section_id):
+            count = 0
+            # Old CTOS: <section id="X">
+            for section in dom.getElementsByTagName("section"):
+                if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == section_id:
+                    count += len(section.getElementsByTagName("record"))
+            # New CTOS: <section_x>
+            for section in dom.getElementsByTagName(f"section_{section_id.lower()}"):
+                count += len(section.getElementsByTagName("record"))
+            return count
 
         summary = {}
         groups = list(records.groupby("NU_PTL"))
         total_groups = len(groups)
         count = 0
-        # The order here matches your self.columns (DD_INDEX after Trade Reference)
-        sections = {
-            "Section A": "section_a",
-            "Section B": "section_b",
-            "Section C": "section_c",
-            "Section D": "section_d",
-            "Section D2": "section_d2",
-            "Section D4": "section_d4",
-            "Section ETR_PLUS": "section_etr_plus",
-            "Section E": "section_e",
-            "Trade Reference": "tr_report"
-            # DD_INDEX will be handled separately, not as a count
-        }
+
         for nu_ptl, group in groups:
             xml_fragments = group["XML"].dropna().astype(str).tolist()
             combined_xml = "<root>" + "".join(xml_fragments) + "</root>"
             dd_index_val = "-"
             try:
                 dom = xml.dom.minidom.parseString(combined_xml)
+                # Get DD_INDEX
                 dd_index_nodes = dom.getElementsByTagName("dd_index")
                 if dd_index_nodes and dd_index_nodes[0].firstChild and dd_index_nodes[0].firstChild.nodeValue.strip():
                     dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
-            except Exception as e:
+            except Exception:
                 summary[nu_ptl] = {col: 0 for col in self.columns}
                 summary[nu_ptl]["DD_INDEX"] = "-"
                 count += 1
@@ -2053,32 +2114,37 @@ class CTOSSummaryView(ctk.CTkFrame):
                 continue
 
             counts = {}
-            for display_name, tag in sections.items():
-                record_count = 0
-                if tag == "tr_report":
-                    nodes = dom.getElementsByTagName("tr_report")
-                    record_count = sum(1 for node in nodes if node.hasAttribute("type") and node.getAttribute("type").upper() == "TR")
-                else:
-                    nodes = dom.getElementsByTagName(tag)
-                    if nodes.length > 0:
-                        for section_node in nodes:
-                            for child in section_node.childNodes:
-                                if (child.nodeType == child.ELEMENT_NODE and 
-                                    child.tagName.lower() == "record" and 
-                                    child.hasAttribute("seq")):
-                                    record_count += 1
-                    if record_count == 0:
-                        letter = display_name.split(" ")[1].upper()
-                        old_sections = [node for node in dom.getElementsByTagName("section")
-                                        if node.hasAttribute("id") and node.getAttribute("id").strip().upper() == letter]
-                        for section_node in old_sections:
-                            for child in section_node.childNodes:
-                                if (child.nodeType == child.ELEMENT_NODE and 
-                                    child.tagName.lower() == "record" and 
-                                    child.hasAttribute("seq")):
-                                    record_count += 1
-                counts[display_name] = record_count
-            # Insert DD_INDEX as a value, not a count
+            # Sections A, B, C, D, D2, D4, ETR_PLUS: count <record> in both old and new tags
+            for col, sec_id in [
+                ("Section A", "A"),
+                ("Section B", "B"),
+                ("Section C", "C"),
+                ("Section D", "D"),
+                ("Section D2", "D2"),
+                ("Section D4", "D4"),
+                ("Section ETR_PLUS", "ETR_PLUS"),
+            ]:
+                counts[col] = count_records_in_section(dom, sec_id)
+
+            # Section E: 
+            # - New CTOS: <section_e> → count <enquiry>
+            # - Old CTOS: <section id="E"> → count <record>
+            section_e_enquiry_count = 0
+            for section_e in dom.getElementsByTagName("section_e"):
+                section_e_enquiry_count += len(section_e.getElementsByTagName("enquiry"))
+            section_e_record_count = 0
+            for section in dom.getElementsByTagName("section"):
+                if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == "E":
+                    section_e_record_count += len(section.getElementsByTagName("record"))
+            counts["Section E"] = section_e_enquiry_count + section_e_record_count
+
+            # Trade Reference: <tr_report type="TR"> → count <enquiry>
+            trade_ref_count = 0
+            for tr_report in dom.getElementsByTagName("tr_report"):
+                if tr_report.hasAttribute("type") and tr_report.getAttribute("type").strip().upper() == "TR":
+                    trade_ref_count += len(tr_report.getElementsByTagName("enquiry"))
+            counts["Trade Reference"] = trade_ref_count
+
             counts["DD_INDEX"] = dd_index_val
             summary[nu_ptl] = counts
             count += 1
