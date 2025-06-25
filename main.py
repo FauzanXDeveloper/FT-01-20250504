@@ -33,6 +33,11 @@ def create_menu_icon(size=32, color="#bbb"):
     return ctk.CTkImage(img, size=(size, size))
  
 menu_icon = create_menu_icon(32, "#bbb")
+
+tab_ccris_icon = ctk.CTkImage(Image.open("Picture/tab_ccris.png"), size=(24, 24))
+summary_icon = ctk.CTkImage(Image.open("Picture/summary.png"), size=(24, 24))
+back_to_main_icon = ctk.CTkImage(Image.open("Picture/back_to_main.png"), size=(24, 24))
+
  
 # --- Sidebar Setup ---
 SIDEBAR_EXPANDED_WIDTH = 175
@@ -43,7 +48,7 @@ sidebar_container.pack(side="left", fill="y")
 
 sidebar = ctk.CTkFrame(sidebar_container, width=SIDEBAR_EXPANDED_WIDTH)
 sidebar.pack(side="left", fill="y")
-sidebar.pack_propagate(False)  # Prevent auto-resize
+sidebar.pack_propagate(False)
 
 # Hamburger Button (always at top left of sidebar)
 hamburger_img = ctk.CTkImage(Image.open("Picture/hamburger.png"), size=(24, 24))
@@ -59,17 +64,16 @@ hamburger_btn = ctk.CTkButton(
 )
 hamburger_btn.pack(pady=(8, 0), padx=(4, 0), anchor="nw")
 
-
-
 # # --- Sidebar Toggle Logic ---
 sidebar_expanded = True
-
 
 # Menu label and buttons (put in a frame for easy show/hide)
 menu_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
 menu_frame.pack(fill="both", expand=True)
 
-ctk.CTkLabel(menu_frame, text="Menu", font=("Arial", 18, "bold")).pack(pady=(12, 10))
+menu_label = ctk.CTkLabel(menu_frame, text="Menu", font=("Arial", 18, "bold"))
+menu_label.pack(pady=(12, 10))
+
 btn_report = ctk.CTkButton(
     menu_frame,
     text="CCRIS Report",
@@ -79,8 +83,8 @@ btn_report = ctk.CTkButton(
     fg_color="transparent",
     bg_color="transparent",
     corner_radius=10,
-    border_width=2,
-    
+    border_width=1,
+    anchor="w"
 )
 btn_report.pack(pady=10, padx=(0, 0))
 
@@ -93,7 +97,8 @@ btn_another = ctk.CTkButton(
     bg_color="transparent",
     font=("Arial", 15, "bold"),
     corner_radius=10,
-    border_width=2,
+    border_width=1,
+    anchor="w"
 )
 btn_another.pack(pady=10, padx=(0, 0))
 
@@ -105,7 +110,7 @@ def is_integrate_running():
     for proc in psutil.process_iter(attrs=["cmdline"]):
         try:
             cmdline = proc.info["cmdline"]
-            if cmdline and "integrate.py" in " ".join(cmdline):
+            if cmdline and "integrate.exe" in " ".join(cmdline):
                 return proc
         except Exception:
             continue
@@ -139,15 +144,16 @@ def back_to_main():
 
 btn_main = ctk.CTkButton(
     menu_frame,
-    text="🔙 Back to Main",
+    text="Back to Main",
     width=150,
     height=40,
-    command=back_to_main,  # Pass the function reference without parentheses
+    command=back_to_main,
     fg_color="transparent",
     bg_color="transparent",
     font=("Arial", 15, "bold"),
     corner_radius=10,
-    border_width=2,
+    border_width=1,
+    anchor="w"
 )
 btn_main.pack(pady=10, padx=(0, 0))
 
@@ -180,13 +186,23 @@ def toggle_sidebar():
     global sidebar_expanded
     if sidebar_expanded:
         sidebar.configure(width=SIDEBAR_SHRUNK_WIDTH)
-        menu_frame.pack_forget()
+        # Show only icons, hide text, keep positions
+        btn_report.configure(text="", image=tab_ccris_icon, width=40, anchor="center", font=("Arial", 1))
+        btn_another.configure(text="", image=summary_icon, width=40, anchor="center", font=("Arial", 1))
+        btn_main.configure(text="", image=back_to_main_icon, width=40, anchor="center", font=("Arial", 1))
+        menu_label.pack_forget()
+        menu_label.pack(pady=(12, 10), before=btn_report)  # Always keep at the top
         sidebar_expanded = False
     else:
         sidebar.configure(width=SIDEBAR_EXPANDED_WIDTH)
-        menu_frame.pack(fill="both", expand=True)
+        # Show only text, hide icons, keep positions
+        btn_report.configure(text="CCRIS Report", image=None, width=150, anchor="w", font=("Arial", 15, "bold"))
+        btn_another.configure(text="Excel All Task", image=None, width=150, anchor="w", font=("Arial", 15, "bold"))
+        btn_main.configure(text="Back to Main", image=None, width=150, anchor="w", font=("Arial", 15, "bold"))
+        menu_label.pack_forget()
+        menu_label.pack(pady=(12, 10), before=btn_report)  # Always keep at the top
         sidebar_expanded = True
-        
+      
         
 def toggle_sidebar_mode():
     # Toggle between dark and light modes using patina theme settings
@@ -221,7 +237,9 @@ def do_nothing():
 class CCRISReport:
     def __init__(self, parent):
         self.parent = parent
-        
+        self._repeat_job = None
+        self._repeat_fast_job = None
+        self._repeat_fast_timer = None
         
         # Set Treeview style to dark before creating any Treeview
         self.set_treeview_style("dark")
@@ -317,9 +335,10 @@ class CCRISReport:
             image=left_arrow_icon,
             fg_color="transparent",
             hover_color="#444",
-            command=self.on_previous
         )
         self.prev_btn.grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        self.prev_btn.bind("<ButtonPress-1>", self._start_prev_repeat)
+        self.prev_btn.bind("<ButtonRelease-1>", self._stop_prev_repeat)
 
         # Combobox in center column
         self.selected_pg_rqs = ctk.StringVar()
@@ -338,9 +357,10 @@ class CCRISReport:
             image=right_arrow_icon,
             fg_color="transparent",
             hover_color="#444",
-            command=self.on_next
         )
         self.next_btn.grid(row=0, column=2, padx=10, pady=5, sticky="w")
+        self.next_btn.bind("<ButtonPress-1>", self._start_next_repeat)
+        self.next_btn.bind("<ButtonRelease-1>", self._stop_next_repeat)
         
         self.arrears_label = ctk.CTkLabel(self.control_frame, text="Arrears in 12 Months:")
         self.arrears_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
@@ -407,6 +427,59 @@ class CCRISReport:
         bind_treeview_mousewheel_with_passthrough(self.outstanding_tree, self.canvas)
         bind_treeview_mousewheel_with_passthrough(self.attention_tree, self.canvas)
         bind_treeview_mousewheel_with_passthrough(self.application_tree, self.canvas)
+        
+    def _start_next_repeat(self, event=None):
+        self._stop_next_repeat()
+        def slow_repeat():
+            self.on_next()
+            self._repeat_job = self.outer_frame.after(400, slow_repeat)
+        slow_repeat()
+        # After 5 seconds, switch to fast repeat
+        self._repeat_fast_timer = self.outer_frame.after(3000, self._switch_to_fast_next_repeat)
+
+    def _switch_to_fast_next_repeat(self):
+        self._stop_next_repeat()
+        def fast_repeat():
+            self.on_next()
+            self._repeat_fast_job = self.outer_frame.after(80, fast_repeat)
+        fast_repeat()
+
+    def _stop_next_repeat(self, event=None):
+        if self._repeat_job:
+            self.outer_frame.after_cancel(self._repeat_job)
+            self._repeat_job = None
+        if self._repeat_fast_job:
+            self.outer_frame.after_cancel(self._repeat_fast_job)
+            self._repeat_fast_job = None
+        if self._repeat_fast_timer:
+            self.outer_frame.after_cancel(self._repeat_fast_timer)
+            self._repeat_fast_timer = None
+
+    def _start_prev_repeat(self, event=None):
+        self._stop_prev_repeat()
+        def slow_repeat():
+            self.on_previous()
+            self._repeat_job = self.outer_frame.after(400, slow_repeat)
+        slow_repeat()
+        self._repeat_fast_timer = self.outer_frame.after(5000, self._switch_to_fast_prev_repeat)
+
+    def _switch_to_fast_prev_repeat(self):
+        self._stop_prev_repeat()
+        def fast_repeat():
+            self.on_previous()
+            self._repeat_fast_job = self.outer_frame.after(80, fast_repeat)
+        fast_repeat()
+
+    def _stop_prev_repeat(self, event=None):
+        if self._repeat_job:
+            self.outer_frame.after_cancel(self._repeat_job)
+            self._repeat_job = None
+        if self._repeat_fast_job:
+            self.outer_frame.after_cancel(self._repeat_fast_job)
+            self._repeat_fast_job = None
+        if self._repeat_fast_timer:
+            self.outer_frame.after_cancel(self._repeat_fast_timer)
+            self._repeat_fast_timer = None
 
     def on_previous(self):
         # Example: set the combobox to the previous page (if available)
@@ -460,7 +533,21 @@ class CCRISReport:
                     self.excel_data[sheet] = df
 
             if "part_1" in self.excel_data:
-                self.pg_list = self.excel_data["part_1"]["PG_RQS"].dropna().unique().tolist()
+                
+                for val in self.excel_data["part_1"]["NU_PTL"].tail(10):
+                    print("NU_PTL repr:", repr(val))
+                # Print the last 5 rows of the DataFrame
+                print(self.excel_data["part_1"].tail(5))
+                
+                self.pg_list = (
+                    self.excel_data["part_1"]["NU_PTL"]
+                    .astype(str)
+                    .str.strip()
+                    .replace(["", "NaN", "nan"], pd.NA)
+                    .dropna()
+                    .unique()
+                    .tolist()
+                )
                 self.pg_dropdown.configure(values=self.pg_list)
                 if self.pg_list:
                     self.selected_pg_rqs.set(self.pg_list[0])
@@ -494,7 +581,7 @@ class CCRISReport:
         pending_count_last_month = 0
         if "part_4" in self.excel_data:
             df_part4 = self.excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
+            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 # Get the latest report date
                 latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
@@ -512,7 +599,7 @@ class CCRISReport:
         # ...existing code for filling tables...
         for part, tree in zip(["part_2", "part_3", "part_4"], [self.outstanding_tree, self.attention_tree, self.application_tree]):
             df = self.excel_data.get(part, pd.DataFrame())
-            df_pg = df[df["PG_RQS"] == pg]
+            df_pg = df[df["NU_PTL"] == pg]
             for _, row in df_pg.iterrows():
                 values = [
                     row.get("REC_CTR", "NaN"),
@@ -539,7 +626,7 @@ class CCRISReport:
         mth_c_value = "12-Month Arrears"
         if "part_1" in self.excel_data:
             arrears_df = self.excel_data["part_1"]
-            mth_c = arrears_df.loc[arrears_df["PG_RQS"] == pg, "MTH_C"]
+            mth_c = arrears_df.loc[arrears_df["NU_PTL"] == pg, "MTH_C"]
             if not mth_c.empty:
                 mth_c_value = mth_c.iloc[0]
  
@@ -714,7 +801,7 @@ class TaskTabBar:
         mth_c_value = "12-Month Arrears"
         if "part_4" in excel_data and pg:
             df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
+            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(latest_report_date):
@@ -729,7 +816,7 @@ class TaskTabBar:
                     pending_numbers = df_pg_part4.loc[mask, "REC_CTR"].tolist()
         if "part_1" in excel_data and pg:
             arrears_df = excel_data["part_1"]
-            mth_c = arrears_df.loc[arrears_df["PG_RQS"] == pg, "MTH_C"]
+            mth_c = arrears_df.loc[arrears_df["NU_PTL"] == pg, "MTH_C"]
             if not mth_c.empty:
                 mth_c_value = mth_c.iloc[0]
         if pending_numbers:
@@ -747,7 +834,7 @@ class TaskTabBar:
         task2_text = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["FCY_TYPE"] = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper()
             df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
             df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
@@ -785,7 +872,7 @@ class TaskTabBar:
         task3_text = "Task 3:\nCCRISCard Age : -\n"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
             # Get the earliest (min) date
             if not df_pg_part2["DT_APPL"].isna().all():
@@ -794,7 +881,7 @@ class TaskTabBar:
                 report_date = "-"
                 if "part_4" in excel_data:
                     df_part4 = excel_data["part_4"]
-                    df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                    df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy()
                     if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                         latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                         if pd.notna(latest_report_date):
@@ -809,12 +896,12 @@ class TaskTabBar:
         if "part_2" in excel_data and "part_4" in excel_data and pg:
             df_part2 = excel_data["part_2"]
             df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
+            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(report_date):
                     one_year_ago = report_date - pd.DateOffset(months=12)
-                    df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+                    df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
                     df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
                     mask = (
                         (df_pg_part2["COL_TYPE"] == "0") &
@@ -835,12 +922,12 @@ class TaskTabBar:
         if "part_2" in excel_data and "part_4" in excel_data and pg:
             df_part2 = excel_data["part_2"]
             df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
+            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(report_date):
                     eighteen_months_ago = report_date - pd.DateOffset(months=18)
-                    df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+                    df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
                     df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
                     mask = (
                         (df_pg_part2["COL_TYPE"] == "0") &
@@ -859,14 +946,14 @@ class TaskTabBar:
         task6_text = "Task 6:\nThin Ccris : -\n"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
             # a. Calculate months between earliest date and report date
             earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
             report_date = None
             if "part_4" in excel_data:
                 df_part4 = excel_data["part_4"]
-                df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy()
                 if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                     latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                     if pd.notna(latest_report_date):
@@ -982,6 +1069,9 @@ class ExcelAllTask:
         self.search_var = tk.StringVar()
         self.frame = ctk.CTkFrame(parent, corner_radius=12)
         self.frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self._repeat_job = None
+        self._repeat_fast_job = None
+        self._repeat_fast_timer = None
 
         # --- Header (with logos) ---
         self.header = ctk.CTkFrame(self.frame, fg_color="transparent")
@@ -994,14 +1084,45 @@ class ExcelAllTask:
         # --- Controls Row ---
         self.control_frame = ctk.CTkFrame(self.frame, fg_color="transparent")
         self.control_frame.pack(fill="x", pady=(10, 0), padx=10)
+        
+        # --- Table Section ---
+        self.columns = [
+            "NU_PTL",
+            "pending applications last 1 month",
+            "Credit Card utilization",
+            "earliest date",
+            "Unsecured Facilities Approved last 12 months",
+            "Unsecured Facilities Approved last 18 months",
+            "Date CCRIS pulled – Date earliest financing",
+            "only 1 facility",
+            "Secured financing",
+            "Secured financing (Total outstanding)",
+            "Unsecured financing",
+            "Unsecured financing (Total outstanding)"
+        ]
+        table_frame = ctk.CTkFrame(self.frame, corner_radius=8)
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
 
         # Search bar with icon
         search_icon = ctk.CTkImage(Image.open("Picture/search.png"), size=(20, 20))
         left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
         right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
 
-        search_entry_frame = ctk.CTkFrame(self.control_frame, fg_color="#ffffff", corner_radius=8)
+        search_entry_frame = ctk.CTkFrame(self.control_frame, corner_radius=8)
         search_entry_frame.pack(side="left", padx=(0, 10))
+        
+        # --- Column dropdown for search ---
+        self.search_column_var = tk.StringVar(value="All")
+        column_options = ["All"] + self.columns
+        self.search_column_dropdown = ctk.CTkComboBox(
+            search_entry_frame,
+            values=column_options,
+            variable=self.search_column_var,
+            width=120,
+            font=("Segoe UI", 13)
+        )
+        self.search_column_dropdown.pack(side="left", padx=(2, 2))
 
         # Previous button
         self.prev_btn = ctk.CTkButton(
@@ -1012,9 +1133,11 @@ class ExcelAllTask:
             height=36,
             fg_color="transparent",
             hover_color="#eee",
-            command=self.on_prev_match
         )
         self.prev_btn.pack(side="left", padx=(2, 2), pady=2)
+        self.prev_btn.bind("<ButtonPress-1>", self._start_prev_repeat)
+        self.prev_btn.bind("<ButtonRelease-1>", self._stop_prev_repeat)
+        
 
         ctk.CTkLabel(search_entry_frame, image=search_icon, text="", fg_color="transparent").pack(side="left", padx=(2, 2))
         search_entry = ctk.CTkEntry(
@@ -1023,6 +1146,12 @@ class ExcelAllTask:
         search_entry.pack(side="left", padx=(0, 2), pady=4)
         search_entry.bind("<Return>", self.on_search)
         search_entry.bind("<KeyRelease>", lambda e: None)
+        
+        # --- Add search counter label here ---
+        self.search_counter_label = ctk.CTkLabel(
+            search_entry_frame, text="", fg_color="transparent", font=("Segoe UI", 13)
+        )
+        self.search_counter_label.pack(side="left", padx=(4, 2))
 
         # Next button
         self.next_btn = ctk.CTkButton(
@@ -1033,9 +1162,14 @@ class ExcelAllTask:
             height=36,
             fg_color="transparent",
             hover_color="#eee",
-            command=self.on_next_match
         )
         self.next_btn.pack(side="left", padx=(2, 2), pady=2)
+        self.next_btn.bind("<ButtonPress-1>", self._start_next_repeat)
+        self.next_btn.bind("<ButtonRelease-1>", self._stop_next_repeat)
+        
+        self.matching_row_ids = []
+        self.match_index = 0
+        self._repeat_job = None  # <-- Add this line
 
         # Export button
         export_icon = ctk.CTkImage(Image.open("Picture/export.png"), size=(20, 20))
@@ -1078,23 +1212,6 @@ class ExcelAllTask:
         self.loading_gif_running = False
         self.loading_progress = 0
 
-        # --- Table Section ---
-        self.columns = [
-            "PG_RQS",
-            "pending applications last 1 month",
-            "Credit Card utilization",
-            "earliest date",
-            "Unsecured Facilities Approved last 12 months",
-            "Unsecured Facilities Approved last 18 months",
-            "Date CCRIS pulled – Date earliest financing",
-            "only 1 facility",
-            "Secured financing",
-            "Secured financing (Total outstanding)",
-            "Unsecured financing",
-            "Unsecured financing (Total outstanding)"
-        ]
-        table_frame = ctk.CTkFrame(self.frame, corner_radius=8)
-        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         style = ttk.Style()
         style.configure("Modern.Treeview",
@@ -1128,6 +1245,60 @@ class ExcelAllTask:
         self.tree.configure(yscrollcommand=yscroll.set)
         
         self.grid_populated = False
+        
+    def _start_next_repeat(self, event=None):
+        self._stop_next_repeat()
+        def slow_repeat():
+            self.on_next_match()
+            self._repeat_job = self.frame.after(400, slow_repeat)
+        slow_repeat()
+        # After 5 seconds, switch to fast repeat
+        self._repeat_fast_timer = self.frame.after(3000, self._switch_to_fast_next_repeat)
+
+    def _switch_to_fast_next_repeat(self):
+        self._stop_next_repeat()
+        def fast_repeat():
+            self.on_next_match()
+            self._repeat_fast_job = self.frame.after(80, fast_repeat)
+        fast_repeat()
+
+    def _stop_next_repeat(self, event=None):
+        if self._repeat_job:
+            self.frame.after_cancel(self._repeat_job)
+            self._repeat_job = None
+        if self._repeat_fast_job:
+            self.frame.after_cancel(self._repeat_fast_job)
+            self._repeat_fast_job = None
+        if self._repeat_fast_timer:
+            self.frame.after_cancel(self._repeat_fast_timer)
+            self._repeat_fast_timer = None
+
+    def _start_prev_repeat(self, event=None):
+        self._stop_prev_repeat()
+        def slow_repeat():
+            self.on_prev_match()
+            self._repeat_job = self.frame.after(400, slow_repeat)
+        slow_repeat()
+        self._repeat_fast_timer = self.frame.after(5000, self._switch_to_fast_prev_repeat)
+
+    def _switch_to_fast_prev_repeat(self):
+        self._stop_prev_repeat()
+        def fast_repeat():
+            self.on_prev_match()
+            self._repeat_fast_job = self.frame.after(80, fast_repeat)
+        fast_repeat()
+
+    def _stop_prev_repeat(self, event=None):
+        if self._repeat_job:
+            self.frame.after_cancel(self._repeat_job)
+            self._repeat_job = None
+        if self._repeat_fast_job:
+            self.frame.after_cancel(self._repeat_fast_job)
+            self._repeat_fast_job = None
+        if self._repeat_fast_timer:
+            self.frame.after_cancel(self._repeat_fast_timer)
+            self._repeat_fast_timer = None
+
 
     def export_data(self):
         file_path = filedialog.asksaveasfilename(
@@ -1146,28 +1317,47 @@ class ExcelAllTask:
             ws.append(row_data)
         wb.save(file_path)
         messagebox.showinfo("Export", "Export completed successfully!")
+        
+    def update_search_counter(self):
+        if self.matching_row_ids:
+            self.search_counter_label.configure(
+                text=f"{self.match_index + 1} / {len(self.matching_row_ids)}"
+            )
+        else:
+            self.search_counter_label.configure(text="0 / 0")
 
     def on_search(self, event=None):
         query = self.search_var.get().lower()
         self.matching_row_ids = []
         self.match_index = 0
+        selected_column = self.search_column_var.get()
         if not query:
             self.tree.selection_remove(self.tree.selection())
+            self.update_search_counter()
             return
-        # Find all matching rows
         for row_id in self.tree.get_children():
             row_data = self.tree.item(row_id)['values']
-            if any(query in str(val).lower() for val in row_data):
-                self.matching_row_ids.append(row_id)
+            if selected_column == "All":
+                if any(query in str(val).lower() for val in row_data):
+                    self.matching_row_ids.append(row_id)
+            else:
+                try:
+                    col_idx = self.columns.index(selected_column)
+                    if query in str(row_data[col_idx]).lower():
+                        self.matching_row_ids.append(row_id)
+                except Exception:
+                    pass
         if self.matching_row_ids:
             self.highlight_match(0)
         else:
             self.tree.selection_remove(self.tree.selection())
+            self.update_search_counter()
 
     def highlight_match(self, idx):
         # Remove previous selection
         self.tree.selection_remove(self.tree.selection())
         if not self.matching_row_ids:
+            self.update_search_counter()
             return
         idx = idx % len(self.matching_row_ids)
         row_id = self.matching_row_ids[idx]
@@ -1175,6 +1365,7 @@ class ExcelAllTask:
         self.tree.focus(row_id)
         self.tree.see(row_id)
         self.match_index = idx
+        self.update_search_counter()
 
     def on_next_match(self):
         if self.matching_row_ids:
@@ -1212,11 +1403,7 @@ class ExcelAllTask:
     def update_loading_progress(self):
         if not self.loading_gif_running:
             return
-        # Increase the progress percentage until 99%
-        if self.loading_progress < 99:
-            self.loading_progress += 1
-        self.loading_percentage_label.configure(text=f"Loading: {self.loading_progress}%")
-        # Update every 100ms
+        
         self.frame.after(100, self.update_loading_progress)
 
 
@@ -1230,6 +1417,7 @@ class ExcelAllTask:
         self.frame.pack_forget()
 
     def populate_grid(self):
+        """Optimized grid population with faster processing"""
         # Hide the treeview while updating for faster rendering
         self.tree.pack_forget()
         for row in self.tree.get_children():
@@ -1240,29 +1428,275 @@ class ExcelAllTask:
             self.hide_loading()
             return
         
-        # Prepare PG_RQS list
-        pg_list = pd.Series(excel_data["part_1"]["PG_RQS"].unique()).dropna().astype(str).tolist()
-        rows_to_insert = []
+        # **OPTIMIZATION 1: Pre-process all data once**
+        self.preprocess_data(excel_data)
+        
+        # Prepare NU_PTL list
+        pg_list = (
+            pd.Series(excel_data["part_1"]["NU_PTL"])
+            .astype(str)
+            .str.strip()
+            .replace(["", "NaN", "nan"], pd.NA)
+            .dropna()
+            .unique()
+            .tolist()
+        )
+        
         total_pgs = len(pg_list)
         
-        # Process each page and update the progress accurately
-        for i, pg in enumerate(pg_list):
-            task_summaries = self.get_task_summaries_for_pg(pg, excel_data)
-            rows_to_insert.append([pg] + task_summaries)
-            # Calculate progress based on pages processed
-            progress = int(((i + 1) / total_pgs) * 100)
-            # Schedule immediate update on the main thread
-            self.frame.after(0, lambda val=progress: self.loading_percentage_label.configure(text=f"Loading: {val}%"))
+        # **OPTIMIZATION 2: Batch processing instead of individual inserts**
+        batch_size = 50  # Process in batches
+        rows_to_insert = []
         
-        # Now insert all rows on the main thread
-        def insert_all_rows():
-            for row in rows_to_insert:
-                self.tree.insert("", "end", values=row)
-            self.tree.pack(side="left", fill="both", expand=True)
-            self.hide_loading()
-            self.grid_populated = True  # Mark as done
+        def process_batch(start_idx):
+            """Process a batch of records"""
+            end_idx = min(start_idx + batch_size, total_pgs)
+            batch_rows = []
+            
+            for i in range(start_idx, end_idx):
+                pg = pg_list[i]
+                task_summaries = self.get_task_summaries_for_pg_optimized(pg)
+                batch_rows.append([pg] + task_summaries)
+            
+            # Insert batch on main thread
+            def insert_batch():
+                for row in batch_rows:
+                    self.tree.insert("", "end", values=row)
+                
+                # Update progress
+                progress = int((end_idx / total_pgs) * 100)
+                self.loading_percentage_label.configure(text=f"Loading: {progress}%")
+                
+                # Process next batch or finish
+                if end_idx < total_pgs:
+                    # Schedule next batch with small delay to keep UI responsive
+                    self.frame.after(10, lambda: threading.Thread(
+                        target=lambda: process_batch(end_idx), daemon=True
+                    ).start())
+                else:
+                    # Finished processing
+                    self.tree.pack(side="left", fill="both", expand=True)
+                    self.hide_loading()
+                    self.grid_populated = True
+            
+            self.frame.after(0, insert_batch)
+        
+        # Start first batch
+        threading.Thread(target=lambda: process_batch(0), daemon=True).start()
 
-        self.tree.after(0, insert_all_rows)
+    def preprocess_data(self, excel_data):
+        """Pre-process data once for faster access"""
+        # **OPTIMIZATION 3: Convert to optimized data structures**
+        self.processed_data = {}
+        
+        for part_name in ["part_2", "part_4"]:
+            if part_name in excel_data:
+                df = excel_data[part_name].copy()
+                
+                # Convert date columns once
+                if "DT_APPL" in df.columns:
+                    df["DT_APPL"] = pd.to_datetime(df["DT_APPL"], errors="coerce")
+                if "TM_AGG_UTE" in df.columns:
+                    df["TM_AGG_UTE"] = pd.to_datetime(df["TM_AGG_UTE"], errors="coerce")
+                
+                # Convert numeric columns once
+                numeric_cols = ["IM_AM", "IM_LIM_AM"]
+                for col in numeric_cols:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                
+                # Group by NU_PTL for faster lookup
+                self.processed_data[part_name] = df.groupby("NU_PTL")
+
+    def get_task_summaries_for_pg_optimized(self, pg):
+        """Optimized task summary calculation"""
+        try:
+            # **OPTIMIZATION 4: Use pre-processed grouped data**
+            df_pg_part2 = self.processed_data.get("part_2", {}).get_group(pg).copy() if pg in self.processed_data.get("part_2", {}).groups else pd.DataFrame()
+            df_pg_part4 = self.processed_data.get("part_4", {}).get_group(pg).copy() if pg in self.processed_data.get("part_4", {}).groups else pd.DataFrame()
+        except KeyError:
+            # No data for this NU_PTL
+            return ["-"] * 11
+        
+        # **OPTIMIZATION 5: Calculate latest report date once**
+        latest_report_date = None
+        if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
+            latest_report_date = df_pg_part4["TM_AGG_UTE"].max()
+        elif not df_pg_part2.empty and "DT_APPL" in df_pg_part2.columns:
+            latest_report_date = df_pg_part2["DT_APPL"].max()
+        
+        # Task 1: Pending applications (optimized)
+        task1 = self.calculate_task1_optimized(df_pg_part4, latest_report_date)
+        
+        # Task 2: Credit Card utilization (optimized)
+        task2 = self.calculate_task2_optimized(df_pg_part2)
+        
+        # Task 3: CCRIS Age (optimized)
+        task3 = self.calculate_task3_optimized(df_pg_part2)
+        
+        # Task 4 & 5: Unsecured facilities (optimized)
+        task4, task5 = self.calculate_task4_5_optimized(df_pg_part2, latest_report_date)
+        
+        # Task 6: Thin CCRIS (optimized)
+        task6a, task6b = self.calculate_task6_optimized(df_pg_part2, latest_report_date)
+        
+        # Task 7 & 8: Secured/Unsecured financing (optimized)
+        task7a, task7b, task8a, task8b = self.calculate_task7_8_optimized(df_pg_part2)
+        
+        return [
+            task1, task2, task3, task4, task5,
+            task6a, task6b,
+            task7a, task7b, task8a, task8b
+        ]
+
+    def calculate_task1_optimized(self, df_pg_part4, latest_report_date):
+        """Optimized Task 1 calculation"""
+        if df_pg_part4.empty or latest_report_date is None:
+            return "-"
+        
+        one_month_ago = latest_report_date - pd.DateOffset(months=1)
+        mask = (
+            (df_pg_part4["APPL_STS"] == "P") &
+            (df_pg_part4["DT_APPL"] >= one_month_ago) &
+            (df_pg_part4["DT_APPL"] <= latest_report_date)
+        )
+        return str(mask.sum())
+
+    def calculate_task2_optimized(self, df_pg_part2):
+        """Optimized Task 2 calculation"""
+        if df_pg_part2.empty:
+            return "-"
+        
+        # Pre-filter CRDTCARD rows
+        crdtcard_mask = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper() == "CRDTCARD"
+        crdtcard_rows = df_pg_part2[crdtcard_mask]
+        
+        if crdtcard_rows.empty:
+            return "-"
+        
+        crdtcard_outstanding = crdtcard_rows["IM_AM"].sum()
+        
+        # Optimized limit calculation
+        used_dates = set()
+        total_limit = 0
+        
+        for idx in crdtcard_rows.index:
+            # Find nearest previous row with valid date
+            prev_rows = df_pg_part2.loc[:idx]
+            valid_dates = prev_rows[prev_rows["DT_APPL"].notna()]["DT_APPL"]
+            
+            if not valid_dates.empty:
+                latest_date = valid_dates.iloc[-1]
+                date_str = str(latest_date)
+                
+                if date_str not in used_dates:
+                    # Get the limit from the row with this date
+                    date_row = prev_rows[prev_rows["DT_APPL"] == latest_date].iloc[-1]
+                    total_limit += date_row["IM_LIM_AM"]
+                    used_dates.add(date_str)
+        
+        if total_limit > 0:
+            ratio = crdtcard_outstanding / total_limit
+            return f"{ratio:.2%}"
+        return "No outstanding found"
+
+    def calculate_task3_optimized(self, df_pg_part2):
+        """Optimized Task 3 calculation"""
+        if df_pg_part2.empty:
+            return "-"
+        
+        earliest_date = df_pg_part2["DT_APPL"].min()
+        if pd.notna(earliest_date):
+            return earliest_date.strftime('%d-%m-%Y')
+        return "-"
+
+    def calculate_task4_5_optimized(self, df_pg_part2, latest_report_date):
+        """Optimized Task 4 & 5 calculation"""
+        if df_pg_part2.empty or latest_report_date is None:
+            return "-", "-"
+        
+        # Pre-filter unsecured facilities
+        unsecured_mask = df_pg_part2["COL_TYPE"] == "0"
+        unsecured_df = df_pg_part2[unsecured_mask]
+        
+        if unsecured_df.empty:
+            return "-", "-"
+        
+        # Calculate date ranges once
+        twelve_months_ago = latest_report_date - pd.DateOffset(months=12)
+        eighteen_months_ago = latest_report_date - pd.DateOffset(months=18)
+        
+        # Task 4: 12 months
+        mask_12 = (unsecured_df["DT_APPL"] >= twelve_months_ago) & (unsecured_df["DT_APPL"] <= latest_report_date)
+        task4 = str(mask_12.sum()) if mask_12.any() else "-"
+        
+        # Task 5: 18 months
+        mask_18 = (unsecured_df["DT_APPL"] >= eighteen_months_ago) & (unsecured_df["DT_APPL"] <= latest_report_date)
+        task5 = str(mask_18.sum()) if mask_18.any() else "-"
+        
+        return task4, task5
+
+    def calculate_task6_optimized(self, df_pg_part2, latest_report_date):
+        """Optimized Task 6 calculation"""
+        if df_pg_part2.empty:
+            return "-", "-"
+        
+        # Calculate months difference
+        earliest_date = df_pg_part2["DT_APPL"].min()
+        report_date = latest_report_date if latest_report_date else df_pg_part2["DT_APPL"].max()
+        
+        months_diff = "-"
+        if pd.notna(earliest_date) and pd.notna(report_date):
+            months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
+        
+        # Check if only one facility type
+        only_one_facility = "Yes" if df_pg_part2["FCY_TYPE"].nunique() == 1 else "No"
+        
+        return str(months_diff), only_one_facility
+
+    def calculate_task7_8_optimized(self, df_pg_part2):
+        """Optimized Task 7 & 8 calculation"""
+        if df_pg_part2.empty:
+            return "-", "-", "-", "-"
+        
+        # **OPTIMIZATION 6: Vectorized grouping logic**
+        df_pg_part2 = df_pg_part2.reset_index(drop=True)
+        
+        # Find date anchors (rows with valid dates)
+        date_mask = df_pg_part2["DT_APPL"].notna()
+        date_indices = df_pg_part2.index[date_mask].tolist()
+        date_indices.append(len(df_pg_part2))  # Add sentinel
+        
+        task7_count = 0
+        task7_outstanding = 0.0
+        task8_count = 0
+        task8_outstanding = 0.0
+        
+        # Process groups efficiently
+        for i in range(len(date_indices) - 1):
+            start_idx = date_indices[i]
+            end_idx = date_indices[i + 1]
+            group = df_pg_part2.iloc[start_idx:end_idx]
+            
+            # Vectorized operations
+            has_secured = (group["COL_TYPE"] != "0").any()
+            all_unsecured = (group["COL_TYPE"] == "0").all()
+            group_outstanding = group["IM_AM"].sum()
+            
+            if has_secured:
+                task7_count += 1
+                task7_outstanding += group_outstanding
+            elif all_unsecured:
+                task8_count += 1
+                task8_outstanding += group_outstanding
+        
+        # Format results
+        task7a_str = str(task7_count) if task7_count > 0 else "-"
+        task7b_str = f"{task7_outstanding:,.2f}" if task7_count > 0 else "-"
+        task8a_str = str(task8_count) if task8_count > 0 else "-"
+        task8b_str = f"{task8_outstanding:,.2f}" if task8_count > 0 else "-"
+        
+        return task7a_str, task7b_str, task8a_str, task8b_str
 
 
     def get_latest_report_date(self, df_pg_part4, df_pg_part2):
@@ -1279,15 +1713,15 @@ class ExcelAllTask:
     def get_task_summaries_for_pg(self, pg, excel_data):
         df_part2 = excel_data.get("part_2", pd.DataFrame())
         df_part4 = excel_data.get("part_4", pd.DataFrame())
-        df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy() if not df_part2.empty else pd.DataFrame()
-        df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy() if not df_part4.empty else pd.DataFrame()
+        df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy() if not df_part2.empty else pd.DataFrame()
+        df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy() if not df_part4.empty else pd.DataFrame()
 
         # Task 1: Pending applications in last One month
         task1 = "-"
         pending_count_last_month = 0
         if "part_4" in excel_data and pg:
             df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg]
+            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
             if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                 latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                 if pd.notna(latest_report_date):
@@ -1304,7 +1738,7 @@ class ExcelAllTask:
         task2 = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["FCY_TYPE"] = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper()
             df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
             df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
@@ -1336,7 +1770,7 @@ class ExcelAllTask:
         task3 = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
             if not df_pg_part2["DT_APPL"].isna().all():
                 earliest_date = df_pg_part2["DT_APPL"].min()
@@ -1374,13 +1808,13 @@ class ExcelAllTask:
         task6b = "-"
         if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["PG_RQS"] == pg].copy()
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
             df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
             earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
             report_date = None
             if "part_4" in excel_data:
                 df_part4 = excel_data["part_4"]
-                df_pg_part4 = df_part4[df_part4["PG_RQS"] == pg].copy()
+                df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy()
                 if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
                     latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
                     if pd.notna(latest_report_date):
