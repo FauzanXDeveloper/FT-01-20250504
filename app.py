@@ -26,6 +26,16 @@ import psutil
 import win32gui
 import win32con
 
+def extract_first_report(xml_str):
+    """
+    Returns the XML string up to and including the first </report> tag.
+    If </report> is not found, returns the original string.
+    """
+    end_idx = xml_str.lower().find("</report>")
+    if end_idx != -1:
+        return xml_str[:end_idx + len("</report>")]
+    return xml_str
+
 def count_section_presence(dom, section_id):
     """
     Returns 1 if <section id="section_id"> exists, 0 otherwise.
@@ -95,6 +105,9 @@ def clean_malformed_xml(xml_str):
     if not isinstance(xml_str, str):
         return "<root></root>"
 
+    # First, extract only the content up to the first </report> tag
+    xml_str = extract_first_report(xml_str)
+
     # Remove invalid control characters
     xml_str = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", xml_str).strip()
 
@@ -124,6 +137,9 @@ class CTOSReportApp(ctk.CTk):
         
         # Shared data (Excel, parsed XML, etc.)
         self.shared_data = None
+        
+        # Header click counter
+        self.header_click_count = 0
 
         # Sidebar settings
         self.SIDEBAR_EXPANDED_WIDTH = 200
@@ -398,17 +414,36 @@ class CTOSReportApp(ctk.CTk):
                     self.after(0, lambda: messagebox.showerror("Error", "Excel must contain columns: NU_PTL and XML"))
                     self.after(0, self.destroy_progress_popup)
                     return
+                
+                # Add ROW_ID column if it doesn't exist
+                if "ROW_ID" not in df.columns:
+                    df["ROW_ID"] = 0
+                
+                # Remove duplicates: for each NU_PTL and ROW_ID combination, keep only the last occurrence
+                original_count = len(df)
+                df = df.drop_duplicates(subset=["NU_PTL", "ROW_ID"], keep="last").reset_index(drop=True)
+                
+                # Sort by NU_PTL and ROW_ID to ensure proper ordering
+                df = df.sort_values(["NU_PTL", "ROW_ID"]).reset_index(drop=True)
+                
+                # Create cleaned XML dict for XMLFormatView (combine XMLs per NU_PTL)
                 cleaned_xml_dict = {}
-                for _, row in df.iterrows():
-                    nu_ptl = str(row["NU_PTL"])
-                    raw_xml = row["XML"]
-                    cleaned_xml = clean_malformed_xml(raw_xml)
-                    cleaned_xml_dict[nu_ptl] = cleaned_xml
+                for nu_ptl, group in df.groupby("NU_PTL"):
+                    # Sort by ROW_ID and combine all XML fragments for this NU_PTL
+                    group_sorted = group.sort_values("ROW_ID")
+                    combined_xml = ""
+                    for _, row in group_sorted.iterrows():
+                        raw_xml = str(row["XML"]) if pd.notna(row["XML"]) else ""
+                        if raw_xml.strip():
+                            combined_xml += clean_malformed_xml(raw_xml)
+                    cleaned_xml_dict[str(nu_ptl)] = combined_xml
+                    
                 def update_data():
                     self.shared_data = df
                     self.xml_format_view.xml_data = cleaned_xml_dict
                     self.destroy_progress_popup()
-                    messagebox.showinfo("Success", "Excel imported and XML cleaned successfully!")
+                    removed_count = original_count - len(df)
+                    messagebox.showinfo("Success", f"Excel imported successfully!\nProcessed {len(df)} unique records.\nRemoved {removed_count} duplicate entries.")
                 self.after(0, update_data)
             except Exception as e:
                 self.after(0, self.destroy_progress_popup)
@@ -453,6 +488,7 @@ class CTOSReportView(ctk.CTkFrame):
         # --- Header Frame ---
         header_frame = ctk.CTkFrame(self)
         header_frame.pack(fill="x", pady=10)
+        
 
         # CTOS logo in center
         try:
@@ -463,6 +499,7 @@ class CTOSReportView(ctk.CTkFrame):
         except Exception:
             ctos_logo_label = ctk.CTkLabel(header_frame, text="CTOS")
             ctos_logo_label.pack(side="top", pady=5)
+
 
         # Al Rajhi logo on right
         try:
@@ -549,6 +586,7 @@ class CTOSReportView(ctk.CTkFrame):
         refresh_button = ctk.CTkButton(self, text="Refresh", command=self.refresh_data)
         refresh_button.pack(pady=10)
 
+
     def on_account_typing(self, event):
         typed = self.account_var.get().lower()
         filtered = [acct for acct in self.all_accounts if typed in acct.lower()]
@@ -563,11 +601,6 @@ class CTOSReportView(ctk.CTkFrame):
         def is_new_ctos_xml(xml_str):
             return any(tag in xml_str for tag in ["<section_d2", "<section_d4", "<section_etr_plus", "<section_etl"])
 
-        def strip_after_report(xml_str):
-            import re
-            match = re.search(r"(.*?</report>)", xml_str, re.DOTALL | re.IGNORECASE)
-            return match.group(1) if match else xml_str
-
         def tag_count(xml):
             import re
             return len(re.findall(r"<[a-zA-Z0-9_]+", xml))
@@ -581,8 +614,8 @@ class CTOSReportView(ctk.CTkFrame):
 
         cleaned_data = {}
         for nuptl, xml_list in nuptl_to_xmls.items():
-            # Remove trailing garbage after </report>
-            cleaned_xmls = [strip_after_report(xml) for xml in xml_list]
+            # Remove trailing garbage after </report> using standardized function
+            cleaned_xmls = [extract_first_report(xml) for xml in xml_list]
             # Prefer new CTOS if available
             new_ctos_xmls = [xml for xml in cleaned_xmls if is_new_ctos_xml(xml)]
             if new_ctos_xmls:
@@ -641,6 +674,9 @@ class CTOSReportView(ctk.CTkFrame):
         xml_data = current_row.get("XML", "")
         if pd.isna(xml_data) or not xml_data.strip():
             xml_data = "<No XML Data>"
+
+        # --- Add this line here ---
+        xml_data = extract_first_report(xml_data)
 
         self.tree.delete(*self.tree.get_children())
         try:
@@ -705,7 +741,7 @@ class CTOSReportView(ctk.CTkFrame):
                 continue
             if tag == "section" and child.hasAttribute("title"):
                 title = child.getAttribute("title").strip()
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 self.parse_xml_to_treeview(child, title)
                 continue
             if tag == "record" and child.hasAttribute("seq"):
@@ -737,7 +773,7 @@ class CTOSReportView(ctk.CTkFrame):
             # --- Trade Reference (TR) logic ---
             if tag == "tr_report":
                 if child.hasAttribute("type") and child.getAttribute("type").strip().upper() == "TR":
-                    parent_node = self.tree.insert(parent_path, "end", values=["TRADE REFERENCE", "-"])
+                    parent_node = self.tree.insert(parent_path, "end", values=["TRADE REFERENCE", "-"], tags=("section_bold",))
                     # Header
                     header_nodes = [n for n in child.childNodes if n.nodeType == n.ELEMENT_NODE and n.tagName == "header"]
                     for header in header_nodes:
@@ -786,14 +822,14 @@ class CTOSReportView(ctk.CTkFrame):
                                             pass
                                     self.tree.insert(section_node, "end", values=[dname, text_val])
                         # Blank row after each enquiry
-                        self.tree.insert(parent_node, "end", values=["", ""])
+                        self.tree.insert(parent_node, "end", values=["", ""],tags=("section_bold",))
                 
             # --- New CTOS XML logic below ---
 
             # SECTION A (new format)
             if tag == "section_a":
                 title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION A"
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 for record in child.getElementsByTagName("record"):
                     seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
                     self.tree.insert("", "end", values=["Record", seq])
@@ -815,7 +851,7 @@ class CTOSReportView(ctk.CTkFrame):
             # SECTION B (new format)
             if tag == "section_b":
                 title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION B"
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 # Handle <history> nodes
                 for history in child.getElementsByTagName("history"):
                     year = history.getAttribute("year") if history.hasAttribute("year") else "-"
@@ -843,7 +879,7 @@ class CTOSReportView(ctk.CTkFrame):
             # SECTION C (new format, including broken/nested)
             if tag == "section_c":
                 title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION C"
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 for record in child.getElementsByTagName("record"):
                     seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
                     self.tree.insert("", "end", values=["Record", seq])
@@ -863,7 +899,7 @@ class CTOSReportView(ctk.CTkFrame):
                         # SECTION D (new format)
             if tag == "section_d":
                 title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION D"
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 for record in child.getElementsByTagName("record"):
                     seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
                     self.tree.insert("", "end", values=["Record", seq])
@@ -890,10 +926,44 @@ class CTOSReportView(ctk.CTkFrame):
                             self.tree.insert("", "end", values=[field, value])
                 continue
             
+                        # SECTION D2 (new format)
+            if tag == "section_d2":
+                title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION D2"
+                # Insert section name as bold
+                section_id = self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
+                for record in child.getElementsByTagName("record"):
+                    seq = record.getAttribute("seq") if record.hasAttribute("seq") else ""
+                    self.tree.insert(section_id, "end", values=["Record", seq])
+                    def flatten_record(node, prefix=""):
+                        for item in node.childNodes:
+                            if item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                field = item.tagName
+                                # Handle nested elements
+                                if field in ["lawyer", "cedcon", "settlement", "latest_status", "other_defendants"]:
+                                    if field == "other_defendants":
+                                        for od in item.getElementsByTagName("other_defendant"):
+                                            od_seq = od.getAttribute("seq") if od.hasAttribute("seq") else ""
+                                            for od_item in od.childNodes:
+                                                if od_item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                                    od_field = f"other_defendant_{od_seq}_{od_item.tagName}"
+                                                    od_value = od_item.firstChild.nodeValue.strip() if (od_item.firstChild and od_item.firstChild.nodeValue) else "-"
+                                                    self.tree.insert(section_id, "end", values=[od_field, od_value])
+                                    else:
+                                        for subitem in item.childNodes:
+                                            if subitem.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                                subfield = f"{field}_{subitem.tagName}"
+                                                subvalue = subitem.firstChild.nodeValue.strip() if (subitem.firstChild and subitem.firstChild.nodeValue) else "-"
+                                                self.tree.insert(section_id, "end", values=[subfield, subvalue])
+                                else:
+                                    value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                    self.tree.insert(section_id, "end", values=[field, value])
+                    flatten_record(record)
+                continue
+            
             # SECTION E (new format)
             if tag == "section_e":
                 title = child.getAttribute("title") if child.hasAttribute("title") else "SECTION E"
-                self.tree.insert("", "end", values=[title, "-"])
+                self.tree.insert("", "end", values=[title, "-"], tags=("section_bold",))
                 for enquiry in child.getElementsByTagName("enquiry"):
                     seq = enquiry.getAttribute("seq") if enquiry.hasAttribute("seq") else ""
                     account_no = enquiry.getAttribute("account_no") if enquiry.hasAttribute("account_no") else "-"
@@ -958,6 +1028,8 @@ class CTOSReportView(ctk.CTkFrame):
 
             # --- fallback: process children ---
             self.parse_xml_to_treeview(child, parent_path)
+             # At the end of parse_xml_to_treeview (after tree creation), add:
+        self.tree.tag_configure("section_bold", font=("Segoe UI", 11, "bold"))
 
     def go_to_next(self):
         if self.all_accounts and self.current_index < len(self.all_accounts) - 1:
@@ -1030,6 +1102,8 @@ class CTOSReportView(ctk.CTkFrame):
             xml_data = clean_malformed_xml(row.get("XML", ""))
             if pd.isna(xml_data) or not str(xml_data).strip():
                 continue
+            # Ensure only up to first </report> is parsed
+            xml_data = extract_first_report(xml_data)
             try:
                 dom = xml.dom.minidom.parseString(xml_data)
                 root = dom.documentElement
@@ -1359,22 +1433,22 @@ class CTOSReportView(ctk.CTkFrame):
                                         rec["ACC_LAST_PAID_AMOUNT"] = item.firstChild.nodeValue.strip() if item.firstChild else ""
                                     elif tag == "AGE":
                                         for age_item in item.childNodes:
-                                            if age_item.nodeType == age_item.ELEMENT_NODE:
-                                                age_tag = age_item.tagName.strip().upper()
-                                                if age_tag == "AGE_30":
-                                                    rec["ACC_AGE_30"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_60":
-                                                    rec["ACC_AGE_60"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_90":
-                                                    rec["ACC_AGE_90"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_120":
-                                                    rec["ACC_AGE_120"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_150":
-                                                    rec["ACC_AGE_150"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_180":
-                                                    rec["ACC_AGE_180"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
-                                                elif age_tag == "AGE_OVER_180":
-                                                    rec["ACC_AGE_OVER_180"] = age_item.firstChild.nodeValue.strip() if age_item.firstChild else ""
+                                            if age_item.nodeType == xml.dom.minidom.Node.ELEMENT_NODE:
+                                                subfield = age_item.tagName
+                                                subvalue = age_item.firstChild.nodeValue.strip() if (age_item.firstChild and age_item.firstChild.nodeValue) else "-"
+                                                rec[subfield] = subvalue
+                                    # --- Robust Age Handling ---
+                                    age_fields = ["30", "60", "90", "120", "150", "180", "210"]
+                                    found_ages = {af: False for af in age_fields}
+                                    for item in [i for i in acc.childNodes if i.nodeType == i.ELEMENT_NODE and i.tagName == "item"]:
+                                        age_name = item.getAttribute("name").strip() if item.hasAttribute("name") else ""
+                                        age_value = item.firstChild.nodeValue.strip() if (item.firstChild and item.firstChild.nodeValue) else "-"
+                                        if age_name in found_ages:
+                                            rec[f"ACC_AGE_{age_name}"] = age_value
+                                            found_ages[age_name] = True
+                                    for af in age_fields:
+                                        if not found_ages[af]:
+                                            rec[f"ACC_AGE_{af}"] = "-"
 
                         # Legal Action
                         legal_action = enquiry.getElementsByTagName("legal_action")
@@ -1523,6 +1597,9 @@ class CTOSReportView(ctk.CTkFrame):
             if pd.isna(xml_data) or not str(xml_data).strip():
                 continue
 
+            # Ensure only content up to first </report> is parsed
+            xml_data = extract_first_report(xml_data)
+
             try:
                 dom = xml.dom.minidom.parseString(xml_data)
                 root = dom.documentElement
@@ -1658,7 +1735,7 @@ class CTOSReportView(ctk.CTkFrame):
                                         elif dname == "debt_type":
                                             trade_record["Debt Type"] = text_val
                                     # --- Robust Age Handling ---
-                                    age_fields = ["Age 30", "Age 60", "Age 90", "Age 120", "Age 150", "Age 180", "Age 210"]
+                                    age_fields = ["30", "60", "90", "120", "150", "180", "210"]
                                     age_values = {af: "-" for af in age_fields}
 
                                     # Find the <data> node whose name attribute is "age"
@@ -1809,7 +1886,8 @@ class XMLFormatView(ctk.CTkFrame):
         except Exception as e:
             ctos_logo_label = ctk.CTkLabel(header_frame, text="CTOS")
             ctos_logo_label.pack(side="top", pady=5)
-        
+
+
         # Al Rajhi logo on right
         try:
             alrajhi_img = Image.open("Picture/alrajhi_logo.png")
@@ -1832,7 +1910,7 @@ class XMLFormatView(ctk.CTkFrame):
         # Load arrow icons
         left_arrow_icon = ctk.CTkImage(Image.open("Picture/left-arrow.png"), size=(24, 24))
         right_arrow_icon = ctk.CTkImage(Image.open("Picture/right-arrow.png"), size=(24, 24))
-        
+
         self.prev_btn = ctk.CTkButton(
             control_frame,
             text="",
@@ -1938,7 +2016,9 @@ class XMLFormatView(ctk.CTkFrame):
                 set_idx = set_indices[idx]
                 sets[set_idx].append(str(row.XML))
             for set_idx, xmls in sets.items():
-                nuptl_to_xmls[base_nuptl].append("".join(xmls))
+                # Apply extract_first_report to the combined XML before storing
+                combined_xml = "".join(xmls)
+                nuptl_to_xmls[base_nuptl].append(extract_first_report(combined_xml))
 
         def is_perfect_xml(xml):
             xml = xml.strip()
@@ -1976,6 +2056,8 @@ class XMLFormatView(ctk.CTkFrame):
             self.current_index = self.all_accounts.index(selected_account)
             raw_xml = self.xml_data[selected_account]
 
+            # Extract only the content up to the first </report> tag before processing
+            raw_xml = extract_first_report(raw_xml)
 
             try:
                 cleaned_xml = clean_malformed_xml(raw_xml)
@@ -1988,7 +2070,6 @@ class XMLFormatView(ctk.CTkFrame):
             self.xml_display.delete("1.0", "end")
             self.xml_display.insert("1.0", pretty_xml)
         else:
-            self.dd_index_var.set("-")
             self.xml_display.delete("1.0", "end")
             self.xml_display.insert("1.0", "No data available for the selected account.")
 
@@ -2018,78 +2099,106 @@ class CTOSSummaryView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent)
         self.app = app
-        self.search_var = tk.StringVar()
-        # New headers for columns
-        self.columns = [
-            "Section A", "Section B", "Section C", "Section D", 
-            "Section D2", "Section D4", "Section ETR_PLUS", "Section E", "Trade Reference", "DD_INDEX"
+        self.search_var_new = tk.StringVar()
+        self.search_var_old = tk.StringVar()
+        self.new_columns = [
+            "Section A", "Section B1", "Section B2", "Section C", "Section D1",
+            "Section D2", "Section D3", "Section D4", "Section E1", "Section E2", "DD_INDEX"
         ]
-        # We'll fill one row per unique NU_PTL.
+        self.old_columns = [
+            "Section A", "Section B", "Section C", "Section D", "Section E", "Trade Reference"
+        ]
         self.create_main_layout()
 
     def create_main_layout(self):
-        header_label = ctk.CTkLabel(
-            self, text="CTOS Summary", font=ctk.CTkFont(size=16, weight="bold")
-        )
-        header_label.pack(pady=(10, 5))
 
-        # --- Search Bar ---
-        search_frame = ctk.CTkFrame(self)
+        # --- Tabview for New/Old CTOS ---
+        self.tabview = CTkTabview(self, width=1600, height=700)
+        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
+        self.new_tab = self.tabview.add("New CTOS Summary")
+        self.old_tab = self.tabview.add("Old CTOS Summary")
+
+        # --- New CTOS Summary Tab ---
+        self._create_new_ctos_tab(self.new_tab)
+
+        # --- Old CTOS Summary Tab ---
+        self._create_old_ctos_tab(self.old_tab)
+
+    # ----------- NEW CTOS TAB -----------
+    def _create_new_ctos_tab(self, parent):
+        # --- Header Frame with click counter ---
+        header_frame = ctk.CTkFrame(parent)
+        header_frame.pack(fill="x", pady=5)
+        header_frame.bind("<Button-1>", self.on_header_click_new)
+
+        # CTOS logo in center
+        try:
+            ctos_img = Image.open("Picture/ctos.png")
+            self.ctos_logo_new = ctk.CTkImage(light_image=ctos_img, size=(220, 50))
+            ctos_logo_label = ctk.CTkLabel(header_frame, image=self.ctos_logo_new, text="")
+            ctos_logo_label.pack(side="top", pady=5)
+            ctos_logo_label.bind("<Button-1>", self.on_header_click_new)
+        except Exception:
+            ctos_logo_label = ctk.CTkLabel(header_frame, text="NEW CTOS SUMMARY")
+            ctos_logo_label.pack(side="top", pady=5)
+            ctos_logo_label.bind("<Button-1>", self.on_header_click_new)
+
+        # Header click counter display
+        self.click_counter_label_new = ctk.CTkLabel(header_frame, text="Clicks: 0", font=ctk.CTkFont(size=12))
+        self.click_counter_label_new.place(relx=0.0, rely=0.0, anchor="nw")
+
+        search_frame = ctk.CTkFrame(parent)
         search_frame.pack(pady=5)
         ctk.CTkLabel(search_frame, text="Search NU_PTL:").pack(side="left", padx=(5, 2))
-        search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, width=200)
+        search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var_new, width=200)
         search_entry.pack(side="left", padx=(0, 5))
-        search_entry.bind("<Return>", self.search_summary)
-        search_btn = ctk.CTkButton(search_frame, text="Search", command=self.search_summary)
+        search_entry.bind("<Return>", self.search_summary_new)
+        search_btn = ctk.CTkButton(search_frame, text="Search", command=self.search_summary_new)
         search_btn.pack(side="left")
 
         refresh_button = ctk.CTkButton(
-            self, text="Refresh Summary", command=self.refresh_summary, width=150, height=30
+            parent, text="Refresh Summary", command=self.refresh_summary_new, width=150, height=30
         )
         refresh_button.pack(pady=5)
-        self.progress_bar = ctk.CTkProgressBar(self, mode="determinate")
-        self.progress_bar.pack(fill="x", padx=10, pady=(5,10))
-        self.progress_bar.set(0)
-        self.table_frame = ctk.CTkFrame(self)
-        self.table_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        self.create_summary_table({})
+        self.progress_bar_new = ctk.CTkProgressBar(parent, mode="determinate")
+        self.progress_bar_new.pack(fill="x", padx=10, pady=(5,10))
+        self.progress_bar_new.set(0)
+        self.table_frame_new = ctk.CTkFrame(parent)
+        self.table_frame_new.pack(fill="both", expand=True, padx=10, pady=10)
+        self.create_summary_table_new({})
 
-    def refresh_summary(self):
+    def refresh_summary_new(self):
         data = self.app.shared_data
         if data is None or data.empty:
             messagebox.showerror("Error", "No shared data available for summary!")
             return
 
-        self.progress_bar.set(0)
+        self.progress_bar_new.set(0)
         def background_task():
-            summary = self.calculate_summary(data)
-            self.summary_data = summary  # Store for searching
-            self.after(0, lambda: self.create_summary_table(summary))
+            summary = self.calculate_new_ctos_summary(data)
+            self.summary_data_new = summary  # Store for searching
+            self.after(0, lambda: self.create_summary_table_new(summary))
         threading.Thread(target=background_task, daemon=True).start()
         
-    def search_summary(self, event=None):
-        search_value = self.search_var.get().strip().lower()
-        if not hasattr(self, "summary_data") or not self.summary_data:
+    def search_summary_new(self, event=None):
+        search_value = self.search_var_new.get().strip().lower()
+        if not hasattr(self, "summary_data_new") or not self.summary_data_new:
             return
         if not search_value:
-            self.create_summary_table(self.summary_data)
+            self.create_summary_table_new(self.summary_data_new)
             return
-        filtered = {k: v for k, v in self.summary_data.items() if search_value in str(k).lower()}
-        self.create_summary_table(filtered)
+        filtered = {k: v for k, v in self.summary_data_new.items() if search_value in str(k).lower()}
+        self.create_summary_table_new(filtered)
 
-    def calculate_summary(self, records):
+    def on_header_click_new(self, event):
+        """Handle header clicks and update counter for new CTOS summary"""
+        if not hasattr(self.app, 'header_click_count_new'):
+            self.app.header_click_count_new = 0
+        self.app.header_click_count_new += 1
+        self.click_counter_label_new.configure(text=f"Clicks: {self.app.header_click_count_new}")
+
+    def calculate_new_ctos_summary(self, records):
         import xml.dom.minidom
-
-        def count_records_in_section(dom, section_id):
-            count = 0
-            # Old CTOS: <section id="X">
-            for section in dom.getElementsByTagName("section"):
-                if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == section_id:
-                    count += len(section.getElementsByTagName("record"))
-            # New CTOS: <section_x>
-            for section in dom.getElementsByTagName(f"section_{section_id.lower()}"):
-                count += len(section.getElementsByTagName("record"))
-            return count
 
         summary = {}
         groups = list(records.groupby("NU_PTL"))
@@ -2098,111 +2207,337 @@ class CTOSSummaryView(ctk.CTkFrame):
 
         for nu_ptl, group in groups:
             xml_fragments = group["XML"].dropna().astype(str).tolist()
-            combined_xml = "<root>" + "".join(xml_fragments) + "</root>"
-            dd_index_val = "-"
-            try:
-                dom = xml.dom.minidom.parseString(combined_xml)
-                # Get DD_INDEX
-                dd_index_nodes = dom.getElementsByTagName("dd_index")
-                if dd_index_nodes and dd_index_nodes[0].firstChild and dd_index_nodes[0].firstChild.nodeValue.strip():
-                    dd_index_val = dd_index_nodes[0].firstChild.nodeValue.strip()
-            except Exception:
-                summary[nu_ptl] = {col: 0 for col in self.columns}
-                summary[nu_ptl]["DD_INDEX"] = "-"
-                count += 1
-                self.after(0, self.progress_bar.set, count / total_groups)
+            # Apply extract_first_report to each fragment before combining
+            cleaned_fragments = [extract_first_report(fragment) for fragment in xml_fragments]
+            combined_xml = "<root>" + "".join(cleaned_fragments) + "</root>"
+
+            # --- Only process if it's new CTOS ---
+            if not any(tag in combined_xml for tag in ["<section_a", "<section_d2", "<section_d4", "<section_etr_plus", "<dd_index"]):
                 continue
 
-            counts = {}
-            # Sections A, B, C, D, D2, D4, ETR_PLUS: count <record> in both old and new tags
-            for col, sec_id in [
-                ("Section A", "A"),
-                ("Section B", "B"),
-                ("Section C", "C"),
-                ("Section D", "D"),
-                ("Section D2", "D2"),
-                ("Section D4", "D4"),
-                ("Section ETR_PLUS", "ETR_PLUS"),
-            ]:
-                counts[col] = count_records_in_section(dom, sec_id)
-
-            # Section E: 
-            # - New CTOS: <section_e> → count <enquiry>
-            # - Old CTOS: <section id="E"> → count <record>
-            section_e_enquiry_count = 0
-            for section_e in dom.getElementsByTagName("section_e"):
-                section_e_enquiry_count += len(section_e.getElementsByTagName("enquiry"))
-            section_e_record_count = 0
-            for section in dom.getElementsByTagName("section"):
-                if section.hasAttribute("id") and section.getAttribute("id").strip().upper() == "E":
-                    section_e_record_count += len(section.getElementsByTagName("record"))
-            counts["Section E"] = section_e_enquiry_count + section_e_record_count
-
-            # Trade Reference: <tr_report type="TR"> → count <enquiry>
-            trade_ref_count = 0
-            for tr_report in dom.getElementsByTagName("tr_report"):
-                if tr_report.hasAttribute("type") and tr_report.getAttribute("type").strip().upper() == "TR":
-                    trade_ref_count += len(tr_report.getElementsByTagName("enquiry"))
-            counts["Trade Reference"] = trade_ref_count
-
-            counts["DD_INDEX"] = dd_index_val
-            summary[nu_ptl] = counts
+            row = {
+                "Section A": 0, "Section B1": 0, "Section B2": 0, "Section C": "-",
+                "Section D1": 0, "Section D2": 0, "Section D3": "-", "Section D4": 0,
+                "Section E1": 0, "Section E2": 0, "DD_INDEX": "-"
+            }
+            try:
+                dom = xml.dom.minidom.parseString(combined_xml)
+                # Section A
+                row["Section A"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_a"))
+                # Section B1 = section_c
+                row["Section B1"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_c"))
+                # Section B2 = section_b, only <record rpttype="Ib"> after <history>
+                b2_count = 0
+                for section_b in dom.getElementsByTagName("section_b"):
+                    found_history = False
+                    for node in section_b.childNodes:
+                        if node.nodeType == node.ELEMENT_NODE and node.tagName == "history":
+                            found_history = True
+                        if found_history and node.nodeType == node.ELEMENT_NODE and node.tagName == "record":
+                            if node.getAttribute("rpttype") == "Ib":
+                                b2_count += 1
+                row["Section B2"] = b2_count
+                # Section D1 = section_d
+                row["Section D1"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_d"))
+                # Section D2 = section_d2
+                row["Section D2"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_d2"))
+                # Section D4 = section_d4
+                row["Section D4"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_d4"))
+                # Section E1 = section_etr_plus
+                row["Section E1"] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section_etr_plus"))
+                # Section E2 = section_e (count <enquiry>)
+                row["Section E2"] = sum(len(sec.getElementsByTagName("enquiry")) for sec in dom.getElementsByTagName("section_e"))
+                # DD_INDEX
+                dd_index_nodes = dom.getElementsByTagName("dd_index")
+                if dd_index_nodes and dd_index_nodes[0].firstChild and dd_index_nodes[0].firstChild.nodeValue.strip():
+                    row["DD_INDEX"] = dd_index_nodes[0].firstChild.nodeValue.strip()
+            except Exception:
+                pass
+            summary[nu_ptl] = row
             count += 1
-            self.after(0, self.progress_bar.set, count / total_groups)
+            self.after(0, self.progress_bar_new.set, count / total_groups)
         return summary
 
-    def create_summary_table(self, summary):
-        # Clear existing widgets first
-        for widget in self.table_frame.winfo_children():
+    def create_summary_table_new(self, summary):
+        for widget in self.table_frame_new.winfo_children():
             widget.destroy()
-        
-        container = ctk.CTkFrame(self.table_frame)
+        container = ctk.CTkFrame(self.table_frame_new)
         container.pack(fill="both", expand=True)
-        
-        all_columns = ["NU_PTL"] + self.columns
+        all_columns = ["NU_PTL"] + self.new_columns
         tree = ttk.Treeview(container, columns=all_columns, show="headings")
-        
         tree.heading("NU_PTL", text="NU_PTL")
         tree.column("NU_PTL", width=120, anchor="center")
-        
-        for col in self.columns:
+        for col in self.new_columns:
             tree.heading(col, text=col)
             tree.column(col, width=100, anchor="center")
-        
         nu_ptl_list = sorted(summary.keys())
         for nu_ptl in nu_ptl_list:
             counts = summary[nu_ptl]
-            row_values = [str(nu_ptl)] + [str(counts.get(col, "")) for col in self.columns]
+            row_values = [str(nu_ptl)] + [str(counts.get(col, "")) for col in self.new_columns]
             tree.insert("", "end", values=row_values)
-        
         v_scroll = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
         h_scroll = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
         v_scroll.pack(side="right", fill="y")
         h_scroll.pack(side="bottom", fill="x")
         tree.pack(fill="both", expand=True)
+        self.summary_tree_new = tree
         
-        self.summary_tree = tree
+        # Add right-click context menu for NU_PTL
+        tree.bind("<Button-3>", self.show_nuptl_context_menu_new)
+        self.nuptl_context_menu_new = tk.Menu(self, tearoff=0)
+        self.nuptl_context_menu_new.add_command(label="View XML", command=lambda: self.navigate_to_view("xml"))
+        self.nuptl_context_menu_new.add_command(label="View Report", command=lambda: self.navigate_to_view("report"))
+        self.selected_nuptl_new = None
         
-        convert_btn = ctk.CTkButton(self.table_frame, text="Convert", command=self.convert_summary_to_excel, width=150, height=30)
+        convert_btn = ctk.CTkButton(self.table_frame_new, text="Convert", command=self.convert_summary_to_excel_new, width=150, height=30)
         convert_btn.pack(pady=10)
 
-    # Sample convert method. You can adapt it as needed.
-    def convert_summary_to_excel(self):
+    def convert_summary_to_excel_new(self):
         rows = []
-        for child in self.summary_tree.get_children():
-            rows.append(self.summary_tree.item(child)["values"])
-        
+        for child in self.summary_tree_new.get_children():
+            rows.append(self.summary_tree_new.item(child)["values"])
         import pandas as pd
-        df = pd.DataFrame(rows, columns=["NU_PTL"] + self.columns)
-        
+        df = pd.DataFrame(rows, columns=["NU_PTL"] + self.new_columns)
         from tkinter import filedialog
         file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
                                                 filetypes=[("Excel Files", "*.xlsx")],
-                                                title="Save Summary to Excel")
+                                                title="Save New CTOS Summary to Excel")
         if file_path:
             df.to_excel(file_path, index=False)
-            messagebox.showinfo("Export", "Summary exported successfully!")
+            messagebox.showinfo("Export", "New CTOS summary exported successfully!")
+
+    # ----------- OLD CTOS TAB -----------
+    def _create_old_ctos_tab(self, parent):
+        # --- Header Frame with click counter ---
+        header_frame = ctk.CTkFrame(parent)
+        header_frame.pack(fill="x", pady=5)
+        header_frame.bind("<Button-1>", self.on_header_click_old)
+
+        # CTOS logo in center
+        try:
+            ctos_img = Image.open("Picture/ctos.png")
+            self.ctos_logo_old = ctk.CTkImage(light_image=ctos_img, size=(220, 50))
+            ctos_logo_label = ctk.CTkLabel(header_frame, image=self.ctos_logo_old, text="")
+            ctos_logo_label.pack(side="top", pady=5)
+            ctos_logo_label.bind("<Button-1>", self.on_header_click_old)
+        except Exception:
+            ctos_logo_label = ctk.CTkLabel(header_frame, text="OLD CTOS SUMMARY")
+            ctos_logo_label.pack(side="top", pady=5)
+            ctos_logo_label.bind("<Button-1>", self.on_header_click_old)
+
+        # Header click counter display
+        self.click_counter_label_old = ctk.CTkLabel(header_frame, text="Clicks: 0", font=ctk.CTkFont(size=12))
+        self.click_counter_label_old.place(relx=0.0, rely=0.0, anchor="nw")
+
+        search_frame = ctk.CTkFrame(parent)
+        search_frame.pack(pady=5)
+        ctk.CTkLabel(search_frame, text="Search NU_PTL:").pack(side="left", padx=(5, 2))
+        search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var_old, width=200)
+        search_entry.pack(side="left", padx=(0, 5))
+        search_entry.bind("<Return>", self.search_summary_old)
+        search_btn = ctk.CTkButton(search_frame, text="Search", command=self.search_summary_old)
+        search_btn.pack(side="left")
+
+        refresh_button = ctk.CTkButton(
+            parent, text="Refresh Summary", command=self.refresh_summary_old, width=150, height=30
+        )
+        refresh_button.pack(pady=5)
+        self.progress_bar_old = ctk.CTkProgressBar(parent, mode="determinate")
+        self.progress_bar_old.pack(fill="x", padx=10, pady=(5,10))
+        self.progress_bar_old.set(0)
+        self.table_frame_old = ctk.CTkFrame(parent)
+        self.table_frame_old.pack(fill="both", expand=True, padx=10, pady=10)
+        self.create_summary_table_old({})
+
+    def refresh_summary_old(self):
+        data = self.app.shared_data
+        if data is None or data.empty:
+            messagebox.showerror("Error", "No shared data available for summary!")
+            return
+
+        self.progress_bar_old.set(0)
+        def background_task():
+            summary = self.calculate_old_ctos_summary(data)
+            self.summary_data_old = summary  # Store for searching
+            self.after(0, lambda: self.create_summary_table_old(summary))
+        threading.Thread(target=background_task, daemon=True).start()
+        
+    def search_summary_old(self, event=None):
+        search_value = self.search_var_old.get().strip().lower()
+        if not hasattr(self, "summary_data_old") or not self.summary_data_old:
+            return
+        if not search_value:
+            self.create_summary_table_old(self.summary_data_old)
+            return
+        filtered = {k: v for k, v in self.summary_data_old.items() if search_value in str(k).lower()}
+        self.create_summary_table_old(filtered)
+
+    def on_header_click_old(self, event):
+        """Handle header clicks and update counter for old CTOS summary"""
+        if not hasattr(self.app, 'header_click_count_old'):
+            self.app.header_click_count_old = 0
+        self.app.header_click_count_old += 1
+        self.click_counter_label_old.configure(text=f"Clicks: {self.app.header_click_count_old}")
+
+    def calculate_old_ctos_summary(self, records):
+        import xml.dom.minidom
+
+        summary = {}
+        groups = list(records.groupby("NU_PTL"))
+        total_groups = len(groups)
+        count = 0
+
+        for nu_ptl, group in groups:
+            xml_fragments = group["XML"].dropna().astype(str).tolist()
+            # Apply extract_first_report to each fragment before combining
+            cleaned_fragments = [extract_first_report(fragment) for fragment in xml_fragments]
+            combined_xml = "<root>" + "".join(cleaned_fragments) + "</root>"
+
+            # --- Only process if it's old CTOS ---
+            # Old CTOS: no <section_a>, <section_d2>, <section_d4>, <section_etr_plus>, <dd_index>
+            if any(tag in combined_xml for tag in ["<section_a", "<section_d2", "<section_d4", "<section_etr_plus", "<dd_index"]):
+                continue
+
+            row = {
+                "Section A": 0, "Section B": 0, "Section C": 0, "Section D": 0, "Section E": 0, "Trade Reference": 0
+            }
+            try:
+                dom = xml.dom.minidom.parseString(combined_xml)
+                # Section A-E
+                for sec_id, col in zip(["A", "B", "C", "D", "E"], ["Section A", "Section B", "Section C", "Section D", "Section E"]):
+                    row[col] = sum(len(sec.getElementsByTagName("record")) for sec in dom.getElementsByTagName("section") if sec.getAttribute("id").strip().upper() == sec_id)
+                # Trade Reference
+                row["Trade Reference"] = len(dom.getElementsByTagName("tr_report"))
+            except Exception:
+                pass
+            summary[nu_ptl] = row
+            count += 1
+            self.after(0, self.progress_bar_old.set, count / total_groups)
+        return summary
+
+    def create_summary_table_old(self, summary):
+        for widget in self.table_frame_old.winfo_children():
+            widget.destroy()
+        container = ctk.CTkFrame(self.table_frame_old)
+        container.pack(fill="both", expand=True)
+        all_columns = ["NU_PTL"] + self.old_columns
+        tree = ttk.Treeview(container, columns=all_columns, show="headings")
+        tree.heading("NU_PTL", text="NU_PTL")
+        tree.column("NU_PTL", width=120, anchor="center")
+        for col in self.old_columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=100, anchor="center")
+        nu_ptl_list = sorted(summary.keys())
+        for nu_ptl in nu_ptl_list:
+            counts = summary[nu_ptl]
+            row_values = [str(nu_ptl)] + [str(counts.get(col, "")) for col in self.old_columns]
+            tree.insert("", "end", values=row_values)
+        v_scroll = ttk.Scrollbar(container, orient="vertical", command=tree.yview)
+        h_scroll = ttk.Scrollbar(container, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        v_scroll.pack(side="right", fill="y")
+        h_scroll.pack(side="bottom", fill="x")
+        tree.pack(fill="both", expand=True)
+        self.summary_tree_old = tree
+        
+        # Add right-click context menu for NU_PTL
+        tree.bind("<Button-3>", self.show_nuptl_context_menu_old)
+        self.nuptl_context_menu_old = tk.Menu(self, tearoff=0)
+        self.nuptl_context_menu_old.add_command(label="View XML", command=lambda: self.navigate_to_view("xml"))
+        self.nuptl_context_menu_old.add_command(label="View Report", command=lambda: self.navigate_to_view("report"))
+        self.selected_nuptl_old = None
+        
+        convert_btn = ctk.CTkButton(self.table_frame_old, text="Convert", command=self.convert_summary_to_excel_old, width=150, height=30)
+        convert_btn.pack(pady=10)
+
+    def convert_summary_to_excel_old(self):
+        rows = []
+        for child in self.summary_tree_old.get_children():
+            rows.append(self.summary_tree_old.item(child)["values"])
+        import pandas as pd
+        df = pd.DataFrame(rows, columns=["NU_PTL"] + self.old_columns)
+        from tkinter import filedialog
+        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx",
+                                                filetypes=[("Excel Files", "*.xlsx")],
+                                                title="Save Old CTOS Summary to Excel")
+        if file_path:
+            df.to_excel(file_path, index=False)
+            messagebox.showinfo("Export", "Old CTOS summary exported successfully!")
+
+    def show_nuptl_context_menu_new(self, event):
+        """Show context menu for NU_PTL in new CTOS summary"""
+        try:
+            item = self.summary_tree_new.selection()[0] if self.summary_tree_new.selection() else None
+            if not item:
+                item = self.summary_tree_new.identify_row(event.y)
+            if item:
+                values = self.summary_tree_new.item(item, "values")
+                if values and len(values) > 0:
+                    self.selected_nuptl_new = str(values[0])  # First column is NU_PTL
+                    self.nuptl_context_menu_new.tk_popup(event.x_root, event.y_root)
+        except Exception:
+            pass
+        finally:
+            try:
+                self.nuptl_context_menu_new.grab_release()
+            except:
+                pass
+
+    def show_nuptl_context_menu_old(self, event):
+        """Show context menu for NU_PTL in old CTOS summary"""
+        try:
+            item = self.summary_tree_old.selection()[0] if self.summary_tree_old.selection() else None
+            if not item:
+                item = self.summary_tree_old.identify_row(event.y)
+            if item:
+                values = self.summary_tree_old.item(item, "values")
+                if values and len(values) > 0:
+                    self.selected_nuptl_old = str(values[0])  # First column is NU_PTL
+                    self.nuptl_context_menu_old.tk_popup(event.x_root, event.y_root)
+        except Exception:
+            pass
+        finally:
+            try:
+                self.nuptl_context_menu_old.grab_release()
+            except:
+                pass
+
+    def navigate_to_view(self, view_type):
+        """Navigate to XML or Report view with selected NU_PTL"""
+        # Get the selected NU_PTL from either new or old summary
+        nuptl = None
+        if hasattr(self, 'selected_nuptl_new') and self.selected_nuptl_new:
+            nuptl = self.selected_nuptl_new
+        elif hasattr(self, 'selected_nuptl_old') and self.selected_nuptl_old:
+            nuptl = self.selected_nuptl_old
+        
+        if not nuptl:
+            messagebox.showwarning("Warning", "No NU_PTL selected")
+            return
+        
+        if view_type == "xml":
+            # Navigate to XML Format view
+            self.app.show_xml_format()
+            # Set the NU_PTL in the XML view
+            if nuptl in self.app.xml_format_view.all_accounts:
+                self.app.xml_format_view.account_var.set(nuptl)
+                self.app.xml_format_view.display_xml_data()
+            else:
+                messagebox.showinfo("Info", f"NU_PTL {nuptl} not found in XML data")
+        
+        elif view_type == "report":
+            # Navigate to CTOS Report view
+            self.app.show_ctos_report()
+            # Refresh data first if needed
+            self.app.ctos_report_view.refresh_data()
+            # Set the NU_PTL in the Report view
+            if nuptl in self.app.ctos_report_view.all_accounts:
+                self.app.ctos_report_view.account_var.set(nuptl)
+                self.app.ctos_report_view.current_index = self.app.ctos_report_view.all_accounts.index(nuptl)
+                self.app.ctos_report_view.display_data()
+            else:
+                messagebox.showinfo("Info", f"NU_PTL {nuptl} not found in report data")
 
 if __name__ == "__main__":
     app = CTOSReportApp()
