@@ -25,6 +25,16 @@ app.geometry("1800x900")
  
 # --- Sidebar Toggle Button (3 vertical dash) ---
 def create_menu_icon(size=32, color="#bbb"):
+    """
+    Create a hamburger menu icon image.
+    
+    Args:
+        size (int): Size of the icon in pixels (default: 32)
+        color (str): Color of the menu lines (default: "#bbb")
+        
+    Returns:
+        ctk.CTkImage: Custom tkinter image object for the menu icon
+    """
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     x = size // 2
@@ -104,8 +114,10 @@ btn_another.pack(pady=10, padx=(0, 0))
 
 def is_integrate_running():
     """
-    Check if a process running integrate.py exists.
-    Returns the process if found, otherwise None.
+    Check if the integrate.exe process is currently running.
+    
+    Returns:
+        psutil.Process: The integrate.exe process if found, None otherwise
     """
     for proc in psutil.process_iter(attrs=["cmdline"]):
         try:
@@ -118,8 +130,9 @@ def is_integrate_running():
 
 def bring_integrate_to_front():
     """
-    Brings the window with title containing 'Report Launcher' (adjust if needed)
-    to the front.
+    Brings the Report Launcher window to the foreground if it exists.
+    
+    Uses Windows API to find and activate the window with "Report Launcher" in its title.
     """
     def enum_callback(hwnd, results):
         if win32gui.IsWindowVisible(hwnd):
@@ -135,6 +148,11 @@ def bring_integrate_to_front():
         win32gui.SetForegroundWindow(h)
 
 def back_to_main():
+    """
+    Return to the main Report Launcher application.
+    
+    Launches integrate.exe if not running, otherwise brings the existing window to front.
+    """
     exe_path = os.path.join(os.getcwd(), "integrate.exe")
     proc = is_integrate_running()
     if proc is None:
@@ -183,6 +201,12 @@ except Exception as e:
 current_mode = {"mode": "dark"}
 
 def toggle_sidebar():
+    """
+    Toggle the sidebar between expanded and collapsed states.
+    
+    In collapsed state, shows icons only. In expanded state, shows text labels.
+    Updates button appearance and sidebar width accordingly.
+    """
     global sidebar_expanded
     if sidebar_expanded:
         sidebar.configure(width=SIDEBAR_SHRUNK_WIDTH)
@@ -205,6 +229,11 @@ def toggle_sidebar():
       
         
 def toggle_sidebar_mode():
+    """
+    Toggle between dark and light appearance modes.
+    
+    Switches the entire application theme and updates the mode toggle button icon.
+    """
     # Toggle between dark and light modes using patina theme settings
     if current_mode["mode"] == "dark":
         ctk.set_appearance_mode("light")
@@ -231,11 +260,31 @@ mode_toggle_btn.pack(side="left", expand=True, padx=5)
 
 # Placeholder for button commands
 def do_nothing():
+    """Placeholder function for buttons that don't have specific actions yet."""
     pass
  
 # --- CCRIS Report Class ---
 class CCRISReport:
+    """
+    Main CCRIS Credit Report application interface.
+    
+    Handles Excel file import, data deduplication, customer navigation, 
+    and displays credit information in tabular format with task calculations.
+    
+    Key Features:
+    - Import and deduplicate CCRIS Excel data from 4 parts
+    - Navigate between customers (NU_PTL values) 
+    - Display Outstanding Credit, Special Attention, and Application tables
+    - Show calculated task results in expandable panel
+    - Preserve original NU_PTL values during processing
+    """
     def __init__(self, parent):
+        """
+        Initialize the CCRIS Report interface.
+        
+        Args:
+            parent: Parent widget to contain this interface
+        """
         self.parent = parent
         self._repeat_job = None
         self._repeat_fast_job = None
@@ -482,29 +531,37 @@ class CCRISReport:
             self._repeat_fast_timer = None
 
     def on_previous(self):
-        # Example: set the combobox to the previous page (if available)
+        """Navigate to the previous customer in the dropdown list."""
         current_index = self.pg_dropdown.current()
         if current_index > 0:
             self.pg_dropdown.current(current_index - 1)
             self.load_pg_data()
 
     def on_next(self):
-        # Example: set the combobox to the next page (if available)
+        """Navigate to the next customer in the dropdown list."""
         current_index = self.pg_dropdown.current()
         if current_index < len(self.pg_dropdown['values']) - 1:
             self.pg_dropdown.current(current_index + 1)
             self.load_pg_data()
         
     def show_loading(self):
+        """Display animated loading GIF overlay during data processing."""
         self.loading_label.lift()
         self.loading_gif_running = True
         self.animate_loading_gif(0)
 
     def hide_loading(self):
+        """Hide the loading GIF overlay."""
         self.loading_label.lower()
         self.loading_gif_running = False
 
     def animate_loading_gif(self, idx):
+        """
+        Animate the loading GIF by cycling through frames.
+        
+        Args:
+            idx (int): Current frame index
+        """
         if not self.loading_gif_running:
             return
         frame = self.loading_frames[idx]
@@ -514,12 +571,21 @@ class CCRISReport:
 
  
     def show(self):
+        """Display the CCRIS Report interface."""
         self.outer_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
     def hide(self):
+        """Hide the CCRIS Report interface."""
         self.outer_frame.pack_forget()
  
     def load_excel(self):
+        """
+        Import CCRIS Excel file and process the data.
+        
+        Opens file dialog to select Excel file, loads data from parts 1-4,
+        applies deduplication logic, and populates the customer dropdown.
+        Preserves original NU_PTL values throughout the process.
+        """
         self.show_loading()
         def do_import():
             file_path = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
@@ -527,35 +593,243 @@ class CCRISReport:
                 self.hide_loading()
                 return
             xls = pd.ExcelFile(file_path)
+            
+            # Load raw data first
+            raw_data = {}
             for sheet in ["part_1", "part_2", "part_3", "part_4"]:
                 if sheet in xls.sheet_names:
                     df = xls.parse(sheet, dtype=str).fillna("NaN")
-                    self.excel_data[sheet] = df
+                    raw_data[sheet] = df
+
+            # Apply deduplication logic
+            self.excel_data = self.deduplicate_ccris_data(raw_data)
 
             if "part_1" in self.excel_data:
+                print(f"CCRISReport - After deduplication: {len(self.excel_data['part_1'])} part_1 records")
                 
-                for val in self.excel_data["part_1"]["NU_PTL"].tail(10):
-                    print("NU_PTL repr:", repr(val))
-                # Print the last 5 rows of the DataFrame
-                print(self.excel_data["part_1"].tail(5))
+                # Extract NU_PTL values directly without conversion
+                deduplicated_part1 = self.excel_data["part_1"]
+                raw_nu_ptl_values = deduplicated_part1["NU_PTL"].tolist()
                 
-                self.pg_list = (
-                    self.excel_data["part_1"]["NU_PTL"]
-                    .astype(str)
-                    .str.strip()
-                    .replace(["", "NaN", "nan"], pd.NA)
-                    .dropna()
-                    .unique()
-                    .tolist()
-                )
-                self.pg_dropdown.configure(values=self.pg_list)
+                # Clean NU_PTL list while preserving original values
+                self.pg_list = []
+                for nu_ptl in raw_nu_ptl_values:
+                    # Convert to string for validation but keep original if valid
+                    nu_ptl_str = str(nu_ptl).strip()
+                    
+                    # Skip clearly invalid entries
+                    if nu_ptl_str in ["", "NaN", "nan", "None", "none"] or pd.isna(nu_ptl):
+                        continue
+                    
+                    # Use original value, not converted string
+                    if nu_ptl not in self.pg_list:
+                        self.pg_list.append(nu_ptl)
+                
+                # Sort numerically if possible, otherwise string sort
+                try:
+                    self.pg_list.sort(key=lambda x: float(str(x)) if str(x).replace('.','').isdigit() else float('inf'))
+                except:
+                    self.pg_list.sort(key=str)
+                
+                print(f"CCRISReport - Final NU_PTL list: {len(self.pg_list)} unique values")
+                print(f"First 10 NU_PTL values: {[str(x) for x in self.pg_list[:10]]}")
+                
+                # Convert to strings for dropdown display
+                self.pg_dropdown.configure(values=[str(x) for x in self.pg_list])
                 if self.pg_list:
-                    self.selected_pg_rqs.set(self.pg_list[0])
+                    self.selected_pg_rqs.set(str(self.pg_list[0]))
                     self.load_pg_data()
             self.hide_loading()
         threading.Thread(target=do_import, daemon=True).start()
+
+    def deduplicate_ccris_data(self, raw_data):
+        """
+        Deduplicate CCRIS data by keeping only the latest PG_RQS for each NU_PTL.
+        
+        Ensures proper REC_CTR sequencing for parts 2-4, while part 1 only needs
+        latest PG_RQS per customer.
+        
+        Args:
+            raw_data (dict): Raw data from Excel sheets by part name
+            
+        Returns:
+            dict: Deduplicated data with proper sequencing
+        """
+        cleaned_data = {}
+        
+        for part_name, df in raw_data.items():
+            if df.empty:
+                cleaned_data[part_name] = df
+                continue
+                
+            print(f"\n=== Processing {part_name} ===")
+            print(f"Original data shape: {df.shape}")
+            
+            if part_name == "part_1":
+                # Part 1: Just keep latest PG_RQS for each NU_PTL (no REC_CTR)
+                cleaned_data[part_name] = self.deduplicate_part1(df)
+            else:
+                # Parts 2,3,4: Full deduplication with REC_CTR validation
+                cleaned_data[part_name] = self.deduplicate_with_rec_ctr(df, part_name)
+        
+        return cleaned_data
+
+    def deduplicate_part1(self, df):
+        """
+        Deduplicate part_1 by keeping latest PG_RQS for each NU_PTL.
+        
+        Preserves original NU_PTL values while ensuring only the most recent
+        report data is kept for each customer.
+        
+        Args:
+            df (pandas.DataFrame): Raw part_1 data
+            
+        Returns:
+            pandas.DataFrame: Deduplicated data with original NU_PTL preserved
+        """
+        if "NU_PTL" not in df.columns or "PG_RQS" not in df.columns:
+            print("Missing required columns for part_1 deduplication")
+            return df
+        
+        print(f"Part 1 deduplication - Input: {len(df)} records")
+        print(f"Part 1 unique NU_PTL before: {df['NU_PTL'].nunique()}")
+        
+        # Preserve original NU_PTL values
+        df_clean = df.copy()
+        
+        # Clean NU_PTL - remove invalid entries but preserve original format
+        df_clean = df_clean[df_clean['NU_PTL'].notna()]
+        df_clean = df_clean[df_clean['NU_PTL'].astype(str).str.strip() != '']
+        df_clean = df_clean[~df_clean['NU_PTL'].astype(str).str.lower().isin(['nan', 'none'])]
+        
+        # Convert PG_RQS to numeric for proper sorting only
+        df_clean["PG_RQS_NUM"] = pd.to_numeric(df_clean["PG_RQS"], errors="coerce")
+        df_clean = df_clean.dropna(subset=["PG_RQS_NUM"])
+        
+        print(f"Part 1 after cleaning invalid data: {len(df_clean)} records")
+        
+        # Sort by NU_PTL and PG_RQS (descending = latest first)
+        df_clean = df_clean.sort_values(["NU_PTL", "PG_RQS_NUM"], ascending=[True, False])
+        
+        # Keep only the first (latest) record for each NU_PTL
+        df_latest = df_clean.groupby("NU_PTL").first().reset_index()
+        
+        # Remove helper column but keep original NU_PTL
+        df_latest = df_latest.drop("PG_RQS_NUM", axis=1)
+        
+        print(f"Part 1 - Original: {len(df)} → Latest: {len(df_latest)} records")
+        print(f"Part 1 unique NU_PTL after: {df_latest['NU_PTL'].nunique()}")
+        
+        # Show actual NU_PTL values being kept
+        if len(df_latest) > 0:
+            print("Sample deduplicated NU_PTL values:")
+            for i, nu_ptl in enumerate(df_latest['NU_PTL'].head(10)):
+                pg_rqs = df_latest.iloc[i]['PG_RQS']
+                print(f"  NU_PTL: {nu_ptl} (original), PG_RQS: {pg_rqs}")
+        
+        return df_latest
+
+    def deduplicate_with_rec_ctr(self, df, part_name):
+        """
+        Deduplicate parts 2,3,4 with REC_CTR validation.
+        
+        Keeps only the latest PG_RQS for each NU_PTL and ensures REC_CTR
+        sequences are valid (0,1,2,3...) for each customer.
+        
+        Args:
+            df (pandas.DataFrame): Raw data for parts 2-4
+            part_name (str): Name of the part being processed
+            
+        Returns:
+            pandas.DataFrame: Deduplicated and validated data
+        """
+        required_cols = ["NU_PTL", "PG_RQS", "REC_CTR"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        
+        if missing_cols:
+            print(f"Missing columns in {part_name}: {missing_cols}")
+            return df
+        
+        df_clean = df.copy()
+        
+        # Convert to appropriate types
+        df_clean["PG_RQS_NUM"] = pd.to_numeric(df_clean["PG_RQS"], errors="coerce")
+        df_clean["REC_CTR_NUM"] = pd.to_numeric(df_clean["REC_CTR"], errors="coerce")
+        
+        # Remove invalid rows
+        df_clean = df_clean.dropna(subset=["NU_PTL", "PG_RQS_NUM", "REC_CTR_NUM"])
+        
+        # Group by NU_PTL and find latest PG_RQS for each customer
+        latest_pg_rqs = df_clean.groupby("NU_PTL")["PG_RQS_NUM"].max().reset_index()
+        latest_pg_rqs.rename(columns={"PG_RQS_NUM": "LATEST_PG_RQS"}, inplace=True)
+        
+        # Merge to keep only latest PG_RQS records
+        df_clean = df_clean.merge(latest_pg_rqs, on="NU_PTL")
+        df_latest = df_clean[df_clean["PG_RQS_NUM"] == df_clean["LATEST_PG_RQS"]].copy()
+        
+        # Validate and fix REC_CTR sequencing
+        df_validated = self.validate_rec_ctr_sequence(df_latest, part_name)
+        
+        # Clean up helper columns
+        columns_to_drop = ["PG_RQS_NUM", "REC_CTR_NUM", "LATEST_PG_RQS"]
+        df_validated = df_validated.drop([col for col in columns_to_drop if col in df_validated.columns], axis=1)
+        
+        print(f"{part_name} - Original: {len(df)} → Latest: {len(df_validated)} records")
+        
+        return df_validated
+
+    def validate_rec_ctr_sequence(self, df, part_name):
+        """
+        Validate that REC_CTR is sequential (0,1,2,3...) for each NU_PTL.
+        
+        Fixes any sequence issues by reassigning REC_CTR values to ensure
+        proper sequential order within each customer's records.
+        
+        Args:
+            df (pandas.DataFrame): Data to validate
+            part_name (str): Name of the part being validated
+            
+        Returns:
+            pandas.DataFrame: Data with corrected REC_CTR sequences
+        """
+        validated_groups = []
+        issues_found = 0
+        
+        for nu_ptl, group in df.groupby("NU_PTL"):
+            # Sort by REC_CTR
+            group_sorted = group.sort_values("REC_CTR_NUM").reset_index(drop=True)
+            
+            # Expected sequence: 0, 1, 2, 3, ...
+            expected_sequence = list(range(len(group_sorted)))
+            actual_sequence = group_sorted["REC_CTR_NUM"].astype(int).tolist()
+            
+            if actual_sequence != expected_sequence:
+                issues_found += 1
+                print(f"⚠️  {part_name} - NU_PTL {nu_ptl}: Expected {expected_sequence}, Got {actual_sequence}")
+                
+                # Fix the sequence by reassigning REC_CTR
+                group_sorted["REC_CTR"] = expected_sequence
+                group_sorted["REC_CTR_NUM"] = expected_sequence
+                print(f"   ✅ Fixed sequence for NU_PTL {nu_ptl}")
+            
+            validated_groups.append(group_sorted)
+        
+        if issues_found == 0:
+            print(f"✅ {part_name} - All REC_CTR sequences are valid")
+        else:
+            print(f"🔧 {part_name} - Fixed {issues_found} REC_CTR sequence issues")
+        
+        return pd.concat(validated_groups, ignore_index=True) if validated_groups else df
+
  
     def load_pg_data(self):
+        """
+        Load and display data for the selected customer (NU_PTL).
+        
+        Populates the three main tables (Outstanding Credit, Special Attention, 
+        Application for Credit) with data for the currently selected customer.
+        Also calculates and displays report date and arrears information.
+        """
         pg = self.selected_pg_rqs.get()
         if not pg:
             return
@@ -576,7 +850,7 @@ class CCRISReport:
             except Exception:
                 return val
  
-        # --- Calculate Report Date for part_4 (Application for Credit) ---
+        # Calculate Report Date for part_4 (Application for Credit)
         report_date_str = "-"
         pending_count_last_month = 0
         if "part_4" in self.excel_data:
@@ -596,7 +870,7 @@ class CCRISReport:
                     )
                     pending_count_last_month = mask.sum()
  
-        # ...existing code for filling tables...
+        # Populate tables with formatted data
         for part, tree in zip(["part_2", "part_3", "part_4"], [self.outstanding_tree, self.attention_tree, self.application_tree]):
             df = self.excel_data.get(part, pd.DataFrame())
             df_pg = df[df["NU_PTL"] == pg]
@@ -622,7 +896,7 @@ class CCRISReport:
                 tree.insert("", "end", values=values)
             self.update_table_height(tree, len(df_pg), min_height=4, max_height=20)
  
-        # Optional: Load MTH_C from part_1
+        # Load MTH_C from part_1 for arrears display
         mth_c_value = "12-Month Arrears"
         if "part_1" in self.excel_data:
             arrears_df = self.excel_data["part_1"]
@@ -630,7 +904,7 @@ class CCRISReport:
             if not mth_c.empty:
                 mth_c_value = mth_c.iloc[0]
  
-        # --- Show report date beside arrears label ---
+        # Update arrears label with report date
         self.arrears_label.configure(
             text=f"Arrears in 12 Months: {mth_c_value}    |    Report Date: {report_date_str}"
         )
@@ -638,17 +912,29 @@ class CCRISReport:
         self.application_tree.heading("12-Month Arrears", text=mth_c_value)
         self.outstanding_tree.heading("12-Month Arrears", text=mth_c_value)
  
-        # self.task_tab.show_content(self.excel_data, pg)
+        # Update task panel with current data
         self.task_tab.set_data(self.excel_data, pg)
         if self.task_tab.visible:
             self.task_tab.show_content(self.excel_data, pg)
         
        
     def clear_table(self, tree):
+        """Remove all rows from a Treeview table."""
         for row in tree.get_children():
             tree.delete(row)
  
     def create_table(self, parent, columns, height=5):
+        """
+        Create a styled Treeview table with proper column configuration.
+        
+        Args:
+            parent: Parent widget for the table
+            columns (list): List of column names
+            height (int): Initial table height in rows
+            
+        Returns:
+            ttk.Treeview: Configured table widget
+        """
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="both", expand=True, pady=5)
 
@@ -680,9 +966,24 @@ class CCRISReport:
         return tree
  
     def update_table_height(self, tree, data_len, min_height=4, max_height=20):
+        """
+        Adjust table height based on data length within specified bounds.
+        
+        Args:
+            tree: Treeview to update
+            data_len (int): Number of data rows
+            min_height (int): Minimum height in rows
+            max_height (int): Maximum height in rows
+        """
         tree.config(height=max(min_height, min(data_len, max_height)))
  
     def set_treeview_style(self, mode):
+        """
+        Configure Treeview styling for dark/light mode compatibility.
+        
+        Args:
+            mode (str): "dark" or "light" appearance mode
+        """
         style = ttk.Style()
         # Force the treeview area to fill the widget even if empty:
         style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
@@ -708,7 +1009,26 @@ class CCRISReport:
                 foreground=[("selected", theme["Treeview"]["selected_foreground"][is_dark])])
 
 class TaskTabBar:
+    """
+    Resizable bottom panel that displays calculated task results.
+    
+    Shows 8 calculated tasks based on CCRIS business logic:
+    1. Pending applications count
+    2. Credit card utilization percentage  
+    3. CCRIS age (earliest date)
+    4-5. Unsecured facilities in 12/18 months
+    6. Thin CCRIS analysis
+    7-8. Secured/Unsecured financing counts and totals
+    
+    Features resizing, minimize/expand, and task-specific calculations.
+    """
     def __init__(self, parent):
+        """
+        Initialize the resizable task panel.
+        
+        Args:
+            parent: Parent widget to contain this panel
+        """
         self.parent = parent
         self.visible = False
         self.animating = False
@@ -784,16 +1104,39 @@ class TaskTabBar:
         self.hide_content()
 
     def set_data(self, excel_data, pg):
+        """
+        Set the data for task calculations.
+        
+        Args:
+            excel_data (dict): Processed CCRIS data by part
+            pg (str): Customer identifier (NU_PTL)
+        """
         self.excel_data = excel_data
         self.pg = pg
 
     def _on_show(self):
+        """Show task content and animate panel expansion if data is available."""
         if self.excel_data is not None and self.pg is not None:
             self.show_content(self.excel_data, self.pg)
             self.animate_panel_height(self.current_height, self.max_height, duration=200)  # Animate open
 
     def show_content(self, excel_data, pg):
-        # --- Build calculation text ---
+        """
+        Calculate and display all 8 tasks for the specified customer.
+        
+        Performs the core CCRIS business logic calculations:
+        - Task 1: Count pending applications in last month
+        - Task 2: Calculate credit card utilization ratio
+        - Task 3: Find earliest financing date  
+        - Task 4-5: Count unsecured facilities in 12/18 months
+        - Task 6: Analyze thin CCRIS (months + single facility check)
+        - Task 7-8: Count and sum secured/unsecured financing by groups
+        
+        Args:
+            excel_data (dict): Processed CCRIS data
+            pg (str): Customer identifier
+        """
+        # Build calculation text
         task1_text = ""
         pending_numbers = []
         pending_count_last_month = 0
@@ -829,7 +1172,7 @@ class TaskTabBar:
             f"Report Date: {report_date_str}\n"
         )
 
-        # Task 2: CRDTCARD Outstanding
+        # Task 2: Credit Card utilization calculation
         task2_result = "-"
         task2_text = "-"
         if "part_2" in excel_data and pg:
@@ -868,6 +1211,7 @@ class TaskTabBar:
                 task2_result = "No outstanding found"
             task2_text = f"2. Credit Card utilization:\nCRDTCARD Outstanding : {task2_result}\n"
         
+        # Task 3: CCRIS Age calculation (earliest financing date)  
         task3_result = "-"
         task3_text = "Task 3:\nCCRISCard Age : -\n"
         if "part_2" in excel_data and pg:
@@ -890,58 +1234,131 @@ class TaskTabBar:
                 task3_text = f"3. CCRIS Age:\nearliest date : {earliest_date.strftime('%d-%m-%Y')}\nreport date : {report_date}\n"
             
 
-        # --- Task 4: Number of unsecured facilities in last 12 months ---
+        # Task 4 & 5: Unsecured facilities in last 12/18 months
+        # Task 4: Number of unsecured facilities in last 12 months
         task4_result = "-"
         task4_rows = "-"
-        if "part_2" in excel_data and "part_4" in excel_data and pg:
+        if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
-            if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
-                if pd.notna(report_date):
-                    one_year_ago = report_date - pd.DateOffset(months=12)
-                    df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
-                    df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-                    mask = (
-                        (df_pg_part2["COL_TYPE"] == "0") &
-                        (df_pg_part2["DT_APPL"] >= one_year_ago) &
-                        (df_pg_part2["DT_APPL"] <= report_date)
-                    )
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            df_pg_part2["TM_AGG_UTE"] = pd.to_datetime(df_pg_part2["TM_AGG_UTE"], errors="coerce")
+            
+            # Get report date from part_2 TM_AGG_UTE
+            report_date = df_pg_part2["TM_AGG_UTE"].max()
+            if pd.isna(report_date):
+                report_date = df_pg_part2["DT_APPL"].max()
+                
+            if pd.notna(report_date):
+                one_year_ago = report_date - pd.DateOffset(months=12)
+                
+                # Debug: Print data for troubleshooting
+                print(f"DEBUG Task 4 - PG: {pg}")
+                print(f"DEBUG - Report Date: {report_date}")
+                print(f"DEBUG - One Year Ago: {one_year_ago}")
+                print(f"DEBUG - Data shape: {df_pg_part2.shape}")
+                if not df_pg_part2.empty:
+                    print(f"DEBUG - COL_TYPE values: {df_pg_part2['COL_TYPE'].astype(str).str.strip().unique()}")
+                    print(f"DEBUG - DT_APPL values: {df_pg_part2['DT_APPL'].tolist()}")
+                    print(f"DEBUG - Sample rows:")
+                    for idx, row in df_pg_part2.iterrows():
+                        col_type = str(row['COL_TYPE']).strip()
+                        dt_appl = row['DT_APPL']
+                        is_unsecured = col_type in ["0", "-", "NaN", "nan"]
+                        is_in_range = pd.notna(dt_appl) and dt_appl >= one_year_ago and dt_appl <= report_date
+                        print(f"  Row {idx}: COL_TYPE='{col_type}', DT_APPL={dt_appl}, Unsecured={is_unsecured}, InRange={is_in_range}")
+                
+                # Modified mask to include 'NaN' and 'nan' as unsecured, and handle grouped data
+                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
+                date_in_range = (df_pg_part2["DT_APPL"] >= one_year_ago) & (df_pg_part2["DT_APPL"] <= report_date)
+                
+                # For cases where COL_TYPE and DT_APPL might be in different rows, 
+                # check if any row in the customer data has both unsecured COL_TYPE and valid date
+                unsecured_count = 0
+                matching_rows = []
+                
+                # Group by REC_CTR to handle cases where data spans multiple rows
+                if 'REC_CTR' in df_pg_part2.columns:
+                    for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
+                        has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
+                        has_valid_date = any(pd.notna(dt) and dt >= one_year_ago and dt <= report_date for dt in group['DT_APPL'])
+                        
+                        if has_unsecured and has_valid_date:
+                            unsecured_count += 1
+                            matching_rows.append(str(rec_ctr))
+                else:
+                    # Fallback: use original row-based logic but include NaN
+                    mask = col_type_unsecured & date_in_range
                     unsecured_rows = df_pg_part2[mask]
-                    task4_result = len(unsecured_rows)
-                    task4_rows = ", ".join(unsecured_rows["REC_CTR"].astype(str).tolist()) if not unsecured_rows.empty else "-"
+                    unsecured_count = len(unsecured_rows)
+                    matching_rows = unsecured_rows["REC_CTR"].astype(str).tolist() if not unsecured_rows.empty else []
+                
+                task4_result = unsecured_count
+                task4_rows = ", ".join(matching_rows) if matching_rows else "-"
+                print(f"DEBUG - Task 4 Result: {task4_result}, Rows: {task4_rows}")
+                print("=" * 50)
         task4_text = (
             f"4. Number of unsecured facilities in last 12 months: {task4_result}\n"
             f"Row No: {task4_rows}\n"
         )
 
-        # --- Task 5: Number of unsecured facilities in last 18 months ---
+        # Task 5: Number of unsecured facilities in last 18 months
         task5_result = "-"
         task5_rows = "-"
-        if "part_2" in excel_data and "part_4" in excel_data and pg:
+        if "part_2" in excel_data and pg:
             df_part2 = excel_data["part_2"]
-            df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
-            if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
-                if pd.notna(report_date):
-                    eighteen_months_ago = report_date - pd.DateOffset(months=18)
-                    df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
-                    df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-                    mask = (
-                        (df_pg_part2["COL_TYPE"] == "0") &
-                        (df_pg_part2["DT_APPL"] >= eighteen_months_ago) &
-                        (df_pg_part2["DT_APPL"] <= report_date)
-                    )
-                    unsecured_rows_18 = df_pg_part2[mask]
-                    task5_result = len(unsecured_rows_18)
-                    task5_rows = ", ".join(unsecured_rows_18["REC_CTR"].astype(str).tolist()) if not unsecured_rows_18.empty else "-"
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
+            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+            df_pg_part2["TM_AGG_UTE"] = pd.to_datetime(df_pg_part2["TM_AGG_UTE"], errors="coerce")
+            
+            # Get report date from part_2 TM_AGG_UTE
+            report_date = df_pg_part2["TM_AGG_UTE"].max()
+            if pd.isna(report_date):
+                report_date = df_pg_part2["DT_APPL"].max()
+                
+            if pd.notna(report_date):
+                eighteen_months_ago = report_date - pd.DateOffset(months=18)
+                
+                # Debug: Print data for troubleshooting
+                print(f"DEBUG Task 5 - PG: {pg}")
+                print(f"DEBUG - Report Date: {report_date}")
+                print(f"DEBUG - Eighteen Months Ago: {eighteen_months_ago}")
+                
+                # Modified mask to include 'NaN' and 'nan' as unsecured, and handle grouped data
+                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
+                date_in_range = (df_pg_part2["DT_APPL"] >= eighteen_months_ago) & (df_pg_part2["DT_APPL"] <= report_date)
+                
+                # For cases where COL_TYPE and DT_APPL might be in different rows, 
+                # check if any row in the customer data has both unsecured COL_TYPE and valid date
+                unsecured_count = 0
+                matching_rows = []
+                
+                # Group by REC_CTR to handle cases where data spans multiple rows
+                if 'REC_CTR' in df_pg_part2.columns:
+                    for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
+                        has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
+                        has_valid_date = any(pd.notna(dt) and dt >= eighteen_months_ago and dt <= report_date for dt in group['DT_APPL'])
+                        
+                        if has_unsecured and has_valid_date:
+                            unsecured_count += 1
+                            matching_rows.append(str(rec_ctr))
+                else:
+                    # Fallback: use original row-based logic but include NaN
+                    mask = col_type_unsecured & date_in_range
+                    unsecured_rows = df_pg_part2[mask]
+                    unsecured_count = len(unsecured_rows)
+                    matching_rows = unsecured_rows["REC_CTR"].astype(str).tolist() if not unsecured_rows.empty else []
+                
+                task5_result = unsecured_count
+                task5_rows = ", ".join(matching_rows) if matching_rows else "-"
+                print(f"DEBUG - Task 5 Result: {task5_result}, Rows: {task5_rows}")
+                print("=" * 50)
         task5_text = (
             f"5. Number of unsecured facilities in last 18 months: {task5_result}\n"
             f"Row No: {task5_rows}\n"
         )
-        
+
+        # Task 6: Thin CCRIS analysis (age and facility diversity)
         task6_result = "-"
         task6_text = "Task 6:\nThin Ccris : -\n"
         if "part_2" in excel_data and pg:
@@ -963,44 +1380,68 @@ class TaskTabBar:
             if earliest_date is not None and report_date is not None:
                 months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
             # b. Only 1 facility?
-            only_one_facility = "No"
-            if df_pg_part2["FCY_TYPE"].nunique() == 1:
-                only_one_facility = "Yes"
+            facilities = df_pg_part2["FCY_TYPE"].dropna().astype(str).str.strip()
+            facilities = facilities[(facilities != "") & (facilities != "NaN") & (facilities != "-")]
+            only_one_facility = "Yes" if facilities.nunique() == 1 else "No"
             task6_result = f"a. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}"
             task6_text = f"6. Thin CCRIS:\na. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}\n"
 
-        # --- Task 7: Secured financing (Collateral ≠ 0) ---
-               
+        # Task 7 & 8: Secured/Unsecured financing analysis by groups
         task7_count = 0
         task7_outstanding = 0.0
         task8_count = 0
         task8_outstanding = 0.0
+        
+        # Helper function to validate date values
+        def is_valid_date(date_val):
+            """Check if a value is a valid date (not '-', '', None, NaN)"""
+            if pd.isna(date_val):
+                return False
+            date_str = str(date_val).strip()
+            if date_str in ["-", "", "NaN", "nan", "None", "none"]:
+                return False
+            # Additional check: if it contains actual date characters
+            if any(char.isdigit() for char in date_str) and ("-" in date_str or "/" in date_str):
+                return True
+            return False
 
-        if not df_pg_part2.empty:
-            df_pg_part2 = df_pg_part2.reset_index(drop=True)
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
-            date_mask = ~df_pg_part2["DT_APPL"].isin(["-", "", None]) & ~df_pg_part2["DT_APPL"].isna()
-            group_indices = df_pg_part2.index[date_mask].tolist()
-            group_indices.append(len(df_pg_part2))  # sentinel for last group
+        # Process secured/unsecured financing by groups
+        if "part_2" in excel_data and pg:
+            df_part2 = excel_data["part_2"]
+            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
+            
+            if not df_pg_part2.empty:
+                df_pg_part2 = df_pg_part2.reset_index(drop=True)
+                df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
+                
+                # Find date anchors to group related records
+                date_mask = df_pg_part2["DT_APPL"].apply(is_valid_date)
+                group_indices = df_pg_part2.index[date_mask].tolist()
+                group_indices.append(len(df_pg_part2))  # sentinel for last group
 
-            for i in range(len(group_indices) - 1):
-                start = group_indices[i]
-                end = group_indices[i + 1]
-                group = df_pg_part2.iloc[start:end]
-                # If any row in group has COL_TYPE != "0", it's secured
-                if (group["COL_TYPE"] != "0").any():
-                    task7_count += 1
-                    task7_outstanding += group["IM_AM"].sum()
-                # Else if all are COL_TYPE == "0", it's unsecured
-                elif (group["COL_TYPE"] == "0").all():
-                    task8_count += 1
-                    task8_outstanding += group["IM_AM"].sum()
-                # else: skip (should not happen)
+                # Process each group between date anchors
+                for i in range(len(group_indices) - 1):
+                    start = group_indices[i]
+                    end = group_indices[i + 1]
+                    group = df_pg_part2.iloc[start:end]
+                    
+                    # Check if group has any secured collateral (not 0, -, NaN, etc.)
+                    secured_col_types = [str(col) for col in group["COL_TYPE"] if str(col) not in ["0", "-", "NaN", "nan", "None", "none"]]
+                    
+                    if secured_col_types:
+                        # Group contains secured financing
+                        task7_count += 1
+                        task7_outstanding += group["IM_AM"].sum()
+                    else:
+                        # Group contains only unsecured financing
+                        task8_count += 1
+                        task8_outstanding += group["IM_AM"].sum()
 
         task7_text = (f"7. Secured Financing: {task7_count} \n" f"(Outstanding: {task7_outstanding:,.2f})\n")
         task8_text = (f"8. Unsecured Financing: {task8_count} \n" f"(Outstanding: {task8_outstanding:,.2f})")
         
 
+        # Display all calculated tasks
         all_tasks_text = f"{task1_text}\n{task2_text}\n{task3_text}\n{task4_text}\n{task5_text}\n{task6_text}\n{task7_text}\n{task8_text}"
         self.content_label.configure(text=all_tasks_text)
 
@@ -1012,6 +1453,7 @@ class TaskTabBar:
             self.set_panel_height(self.current_height)
 
     def hide_content(self):
+        """Hide the task content panel and animate to minimum height."""
         self.content_label.pack_forget()
         self.content_frame.pack_forget()
         self.visible = False
@@ -1019,12 +1461,26 @@ class TaskTabBar:
         self.animate_panel_height(self.current_height, self.min_height, duration=200)  # Animate close
 
     def set_panel_height(self, height):
+        """
+        Set the panel height within allowed bounds.
+        
+        Args:
+            height (int): Desired height in pixels
+        """
         height = max(self.min_height, min(self.max_height, int(height)))
         self.current_height = height
         self.frame.configure(height=height)
         self.frame.pack_propagate(False)
 
     def animate_panel_height(self, start, end, duration=200):
+        """
+        Smoothly animate panel height change.
+        
+        Args:
+            start (int): Starting height
+            end (int): Target height  
+            duration (int): Animation duration in milliseconds
+        """
         if int(start) == int(end):
             self.set_panel_height(end)
             return
@@ -1045,11 +1501,23 @@ class TaskTabBar:
         step()
 
     def start_resize(self, event):
+        """
+        Begin panel resize operation.
+        
+        Args:
+            event: Mouse button press event
+        """
         self.resizing = True
         self.start_y = event.y_root
         self.orig_height = self.current_height
 
     def perform_resize(self, event):
+        """
+        Handle panel resizing during mouse drag.
+        
+        Args:
+            event: Mouse motion event
+        """
         if self.resizing:
             delta = self.start_y - event.y_root
             new_height = self.orig_height + delta
@@ -1057,6 +1525,12 @@ class TaskTabBar:
                 self.set_panel_height(new_height)
 
     def toggle_minimize(self, event):
+        """
+        Toggle between minimized and last expanded height.
+        
+        Args:
+            event: Double-click event
+        """
         if self.current_height > self.min_height + 10:
             self.last_height = self.current_height
             self.animate_panel_height(self.current_height, self.min_height, duration=200)
@@ -1064,7 +1538,27 @@ class TaskTabBar:
             self.animate_panel_height(self.current_height, self.last_height, duration=200)
 
 class ExcelAllTask:
+    """
+    Excel export interface showing all customers and their calculated tasks.
+    
+    Displays a comprehensive table with all customers (NU_PTL) and their
+    calculated task results in a searchable, exportable format. Uses optimized
+    batch processing for performance with large datasets.
+    
+    Features:
+    - Searchable table with column filtering
+    - Export to Excel functionality  
+    - Batch processing with progress indication
+    - Navigation through search results
+    - Identical business logic to TaskTabBar but optimized for bulk processing
+    """
     def __init__(self, parent):
+        """
+        Initialize the Excel All Task interface.
+        
+        Args:
+            parent: Parent widget to contain this interface
+        """
         self.parent = parent
         self.search_var = tk.StringVar()
         self.frame = ctk.CTkFrame(parent, corner_radius=12)
@@ -1301,6 +1795,12 @@ class ExcelAllTask:
 
 
     def export_data(self):
+        """
+        Export the current table data to an Excel file.
+        
+        Opens a file save dialog and exports all visible table rows
+        to a new Excel workbook.
+        """
         file_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel Files", "*.xlsx")],
@@ -1319,6 +1819,7 @@ class ExcelAllTask:
         messagebox.showinfo("Export", "Export completed successfully!")
         
     def update_search_counter(self):
+        """Update the search result counter display."""
         if self.matching_row_ids:
             self.search_counter_label.configure(
                 text=f"{self.match_index + 1} / {len(self.matching_row_ids)}"
@@ -1327,6 +1828,15 @@ class ExcelAllTask:
             self.search_counter_label.configure(text="0 / 0")
 
     def on_search(self, event=None):
+        """
+        Perform search across table data.
+        
+        Searches either all columns or a specific selected column
+        for the entered query text (case-insensitive).
+        
+        Args:
+            event: Optional key press event
+        """
         query = self.search_var.get().lower()
         self.matching_row_ids = []
         self.match_index = 0
@@ -1354,6 +1864,12 @@ class ExcelAllTask:
             self.update_search_counter()
 
     def highlight_match(self, idx):
+        """
+        Highlight and scroll to a specific search match.
+        
+        Args:
+            idx (int): Index of the match to highlight
+        """
         # Remove previous selection
         self.tree.selection_remove(self.tree.selection())
         if not self.matching_row_ids:
@@ -1368,16 +1884,19 @@ class ExcelAllTask:
         self.update_search_counter()
 
     def on_next_match(self):
+        """Navigate to the next search match."""
         if self.matching_row_ids:
             next_idx = (self.match_index + 1) % len(self.matching_row_ids)
             self.highlight_match(next_idx)
 
     def on_prev_match(self):
+        """Navigate to the previous search match."""
         if self.matching_row_ids:
             prev_idx = (self.match_index - 1) % len(self.matching_row_ids)
             self.highlight_match(prev_idx)
 
     def show_loading(self):
+        """Display loading animation with progress tracking."""
         self.loading_label.lift()
         self.loading_percentage_label.lift()
         self.loading_gif_running = True
@@ -1386,12 +1905,19 @@ class ExcelAllTask:
         self.update_loading_progress()
 
     def hide_loading(self):
+        """Hide loading animation and show completion."""
         self.loading_label.lower()
         self.loading_percentage_label.lower()
         self.loading_gif_running = False
         self.loading_percentage_label.configure(text="Loading: 100%")
 
     def animate_loading_gif(self, idx):
+        """
+        Animate the loading GIF frames.
+        
+        Args:
+            idx (int): Current frame index
+        """
         if not self.loading_gif_running:
             return
         frame = self.loading_frames[idx]
@@ -1401,6 +1927,7 @@ class ExcelAllTask:
         self.frame.after(60, lambda: self.animate_loading_gif(next_idx))
 
     def update_loading_progress(self):
+        """Update loading progress display (called periodically)."""
         if not self.loading_gif_running:
             return
         
@@ -1408,89 +1935,113 @@ class ExcelAllTask:
 
 
     def show(self):
+        """Display the Excel All Task interface and populate data if needed."""
         self.frame.pack(fill="both", expand=True, padx=10, pady=10)
         if not self.grid_populated:
             self.show_loading()
             threading.Thread(target=self.populate_grid, daemon=True).start()
 
     def hide(self):
+        """Hide the Excel All Task interface."""
         self.frame.pack_forget()
 
     def populate_grid(self):
-        """Optimized grid population with faster processing"""
-        # Hide the treeview while updating for faster rendering
+        """
+        Populate the data grid with calculated tasks for all customers.
+        
+        Uses optimized batch processing to handle large datasets efficiently.
+        Preserves original NU_PTL values and applies the same deduplication
+        logic as CCRISReport.
+        """
         self.tree.pack_forget()
         for row in self.tree.get_children():
             self.tree.delete(row)
         
-        excel_data = ccris_report.excel_data
-        if "part_1" not in excel_data:
+        raw_excel_data = ccris_report.excel_data
+        if "part_1" not in raw_excel_data:
             self.hide_loading()
             return
         
-        # **OPTIMIZATION 1: Pre-process all data once**
+        # Use deduplicated data
+        if not hasattr(ccris_report, 'excel_data_deduplicated'):
+            print("Applying deduplication to ExcelAllTask data...")
+            ccris_report.excel_data_deduplicated = ccris_report.deduplicate_ccris_data(raw_excel_data)
+        
+        excel_data = ccris_report.excel_data_deduplicated
+        
+        # Extract NU_PTL values same way as CCRISReport
+        deduplicated_part1 = excel_data["part_1"]
+        raw_nu_ptl_values = deduplicated_part1["NU_PTL"].tolist()
+        
+        # Clean NU_PTL list while preserving original values
+        pg_list = []
+        for nu_ptl in raw_nu_ptl_values:
+            nu_ptl_str = str(nu_ptl).strip()
+            
+            if nu_ptl_str in ["", "NaN", "nan", "None", "none"] or pd.isna(nu_ptl):
+                continue
+            
+            if nu_ptl not in pg_list:
+                pg_list.append(nu_ptl)
+        
+        # Sort numerically if possible
+        try:
+            pg_list.sort(key=lambda x: float(str(x)) if str(x).replace('.','').isdigit() else float('inf'))
+        except:
+            pg_list.sort(key=str)
+        
+        print(f"ExcelAllTask - Processing {len(pg_list)} deduplicated NU_PTL records")
+        print(f"Sample NU_PTL values: {[str(x) for x in pg_list[:10]]}")
+        
+        # Pre-process data for optimal performance
         self.preprocess_data(excel_data)
         
-        # Prepare NU_PTL list
-        pg_list = (
-            pd.Series(excel_data["part_1"]["NU_PTL"])
-            .astype(str)
-            .str.strip()
-            .replace(["", "NaN", "nan"], pd.NA)
-            .dropna()
-            .unique()
-            .tolist()
-        )
-        
         total_pgs = len(pg_list)
-        
-        # **OPTIMIZATION 2: Batch processing instead of individual inserts**
-        batch_size = 50  # Process in batches
-        rows_to_insert = []
+        batch_size = 50
         
         def process_batch(start_idx):
-            """Process a batch of records"""
             end_idx = min(start_idx + batch_size, total_pgs)
             batch_rows = []
             
             for i in range(start_idx, end_idx):
-                pg = pg_list[i]
+                pg = str(pg_list[i])  # Convert to string for processing
                 task_summaries = self.get_task_summaries_for_pg_optimized(pg)
                 batch_rows.append([pg] + task_summaries)
             
-            # Insert batch on main thread
             def insert_batch():
                 for row in batch_rows:
                     self.tree.insert("", "end", values=row)
                 
-                # Update progress
                 progress = int((end_idx / total_pgs) * 100)
                 self.loading_percentage_label.configure(text=f"Loading: {progress}%")
                 
-                # Process next batch or finish
                 if end_idx < total_pgs:
-                    # Schedule next batch with small delay to keep UI responsive
                     self.frame.after(10, lambda: threading.Thread(
                         target=lambda: process_batch(end_idx), daemon=True
                     ).start())
                 else:
-                    # Finished processing
                     self.tree.pack(side="left", fill="both", expand=True)
                     self.hide_loading()
                     self.grid_populated = True
             
             self.frame.after(0, insert_batch)
         
-        # Start first batch
         threading.Thread(target=lambda: process_batch(0), daemon=True).start()
 
     def preprocess_data(self, excel_data):
-        """Pre-process data once for faster access"""
-        # **OPTIMIZATION 3: Convert to optimized data structures**
+        """
+        Pre-process data for optimal performance during bulk calculations.
+        
+        Converts data types once and groups by NU_PTL for faster lookup
+        during task calculations.
+        
+        Args:
+            excel_data (dict): Processed CCRIS data by part
+        """
         self.processed_data = {}
         
         for part_name in ["part_2", "part_4"]:
-            if part_name in excel_data:
+            if part_name in excel_data and not excel_data[part_name].empty:
                 df = excel_data[part_name].copy()
                 
                 # Convert date columns once
@@ -1505,42 +2056,69 @@ class ExcelAllTask:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
                 
-                # Group by NU_PTL for faster lookup
-                self.processed_data[part_name] = df.groupby("NU_PTL")
+                # Only group if we have NU_PTL column and data
+                if "NU_PTL" in df.columns and not df.empty:
+                    try:
+                        # Group by NU_PTL for faster lookup
+                        grouped = df.groupby("NU_PTL")
+                        self.processed_data[part_name] = grouped
+                        print(f"Preprocessed {part_name}: {len(grouped.groups)} unique NU_PTL groups")
+                    except Exception as e:
+                        print(f"Error grouping {part_name}: {e}")
+                        # Fallback: don't group, use original data
+                        self.processed_data[part_name] = df
+                else:
+                    print(f"Skipping {part_name}: no NU_PTL column or empty data")
+            else:
+                print(f"Skipping {part_name}: not in excel_data or empty")
 
     def get_task_summaries_for_pg_optimized(self, pg):
-        """Optimized task summary calculation"""
+        """
+        Calculate optimized task summaries for a specific customer.
+        
+        Uses pre-processed grouped data for faster calculations.
+        Implements identical business logic to TaskTabBar but optimized
+        for bulk processing.
+        
+        Args:
+            pg (str): Customer identifier (NU_PTL)
+            
+        Returns:
+            list: Calculated values for all 11 task columns
+        """
         try:
-            # **OPTIMIZATION 4: Use pre-processed grouped data**
-            df_pg_part2 = self.processed_data.get("part_2", {}).get_group(pg).copy() if pg in self.processed_data.get("part_2", {}).groups else pd.DataFrame()
-            df_pg_part4 = self.processed_data.get("part_4", {}).get_group(pg).copy() if pg in self.processed_data.get("part_4", {}).groups else pd.DataFrame()
-        except KeyError:
-            # No data for this NU_PTL
+            # Get customer data from pre-processed groups
+            df_pg_part2 = pd.DataFrame()
+            df_pg_part4 = pd.DataFrame()
+            
+            # Check if part_2 exists and has groups
+            if "part_2" in self.processed_data and hasattr(self.processed_data["part_2"], 'groups'):
+                if pg in self.processed_data["part_2"].groups:
+                    df_pg_part2 = self.processed_data["part_2"].get_group(pg).copy()
+            
+            # Check if part_4 exists and has groups
+            if "part_4" in self.processed_data and hasattr(self.processed_data["part_4"], 'groups'):
+                if pg in self.processed_data["part_4"].groups:
+                    df_pg_part4 = self.processed_data["part_4"].get_group(pg).copy()
+                    
+        except (KeyError, AttributeError) as e:
+            # No data for this NU_PTL or grouping issue
+            print(f"Error getting data for NU_PTL {pg}: {e}")
             return ["-"] * 11
         
-        # **OPTIMIZATION 5: Calculate latest report date once**
+        # Calculate latest report date once for performance
         latest_report_date = None
         if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
             latest_report_date = df_pg_part4["TM_AGG_UTE"].max()
         elif not df_pg_part2.empty and "DT_APPL" in df_pg_part2.columns:
             latest_report_date = df_pg_part2["DT_APPL"].max()
         
-        # Task 1: Pending applications (optimized)
+        # Calculate all tasks using optimized methods
         task1 = self.calculate_task1_optimized(df_pg_part4, latest_report_date)
-        
-        # Task 2: Credit Card utilization (optimized)
         task2 = self.calculate_task2_optimized(df_pg_part2)
-        
-        # Task 3: CCRIS Age (optimized)
         task3 = self.calculate_task3_optimized(df_pg_part2)
-        
-        # Task 4 & 5: Unsecured facilities (optimized)
         task4, task5 = self.calculate_task4_5_optimized(df_pg_part2, latest_report_date)
-        
-        # Task 6: Thin CCRIS (optimized)
         task6a, task6b = self.calculate_task6_optimized(df_pg_part2, latest_report_date)
-        
-        # Task 7 & 8: Secured/Unsecured financing (optimized)
         task7a, task7b, task8a, task8b = self.calculate_task7_8_optimized(df_pg_part2)
         
         return [
@@ -1550,7 +2128,16 @@ class ExcelAllTask:
         ]
 
     def calculate_task1_optimized(self, df_pg_part4, latest_report_date):
-        """Optimized Task 1 calculation"""
+        """
+        Task 1: Count pending applications in the last month.
+        
+        Args:
+            df_pg_part4: Part 4 data for customer
+            latest_report_date: Latest report date
+            
+        Returns:
+            str: Count of pending applications or "-"
+        """
         if df_pg_part4.empty or latest_report_date is None:
             return "-"
         
@@ -1563,7 +2150,18 @@ class ExcelAllTask:
         return str(mask.sum())
 
     def calculate_task2_optimized(self, df_pg_part2):
-        """Optimized Task 2 calculation"""
+        """
+        Task 2: Calculate credit card utilization ratio.
+        
+        Finds CRDTCARD outstanding and divides by associated credit limits.
+        Uses nearest previous approval date logic to match limits.
+        
+        Args:
+            df_pg_part2: Part 2 data for customer
+            
+        Returns:
+            str: Percentage utilization or "No outstanding found" or "-"
+        """
         if df_pg_part2.empty:
             return "-"
         
@@ -1601,7 +2199,15 @@ class ExcelAllTask:
         return "No outstanding found"
 
     def calculate_task3_optimized(self, df_pg_part2):
-        """Optimized Task 3 calculation"""
+        """
+        Task 3: Find earliest financing date.
+        
+        Args:
+            df_pg_part2: Part 2 data for customer
+            
+        Returns:
+            str: Earliest date in dd-mm-yyyy format or "-"
+        """
         if df_pg_part2.empty:
             return "-"
         
@@ -1610,60 +2216,107 @@ class ExcelAllTask:
             return earliest_date.strftime('%d-%m-%Y')
         return "-"
 
-    def calculate_task4_5_optimized(self, df_pg_part2, latest_report_date):
-        """Optimized Task 4 & 5 calculation"""
-        if df_pg_part2.empty or latest_report_date is None:
-            return "-", "-"
-        
-        # Pre-filter unsecured facilities
-        unsecured_mask = df_pg_part2["COL_TYPE"] == "0"
-        unsecured_df = df_pg_part2[unsecured_mask]
-        
-        if unsecured_df.empty:
-            return "-", "-"
-        
-        # Calculate date ranges once
-        twelve_months_ago = latest_report_date - pd.DateOffset(months=12)
-        eighteen_months_ago = latest_report_date - pd.DateOffset(months=18)
-        
-        # Task 4: 12 months
-        mask_12 = (unsecured_df["DT_APPL"] >= twelve_months_ago) & (unsecured_df["DT_APPL"] <= latest_report_date)
-        task4 = str(mask_12.sum()) if mask_12.any() else "-"
-        
-        # Task 5: 18 months
-        mask_18 = (unsecured_df["DT_APPL"] >= eighteen_months_ago) & (unsecured_df["DT_APPL"] <= latest_report_date)
-        task5 = str(mask_18.sum()) if mask_18.any() else "-"
-        
-        return task4, task5
-
-    def calculate_task6_optimized(self, df_pg_part2, latest_report_date):
-        """Optimized Task 6 calculation"""
+    def calculate_task4_5_optimized(self, df_pg_part2, _unused=None):
+        """
+        Task 4 & 5: Count unsecured facilities in 12 and 18 months.
+        Uses TM_AGG_UTE from part_2 as report date if available.
+        """
         if df_pg_part2.empty:
             return "-", "-"
+
+        df_pg_part2 = df_pg_part2.copy()
+        df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
+        df_pg_part2["TM_AGG_UTE"] = pd.to_datetime(df_pg_part2["TM_AGG_UTE"], errors="coerce")
+
+        # Get report date from part_2 TM_AGG_UTE
+        report_date = df_pg_part2["TM_AGG_UTE"].max()
+        if pd.isna(report_date):
+            report_date = df_pg_part2["DT_APPL"].max()
+
+        if pd.isna(report_date):
+            return "-", "-"
+
+        one_year_ago = report_date - pd.DateOffset(months=12)
+        eighteen_months_ago = report_date - pd.DateOffset(months=18)
+
+        # Helper function to count unsecured facilities by group
+        def count_unsecured_in_period(start_date):
+            unsecured_count = 0
+            
+            # Group by REC_CTR to handle cases where data spans multiple rows
+            if 'REC_CTR' in df_pg_part2.columns:
+                for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
+                    has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
+                    has_valid_date = any(pd.notna(dt) and dt >= start_date and dt <= report_date for dt in group['DT_APPL'])
+                    
+                    if has_unsecured and has_valid_date:
+                        unsecured_count += 1
+            else:
+                # Fallback: use original row-based logic but include NaN
+                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
+                date_in_range = (df_pg_part2["DT_APPL"] >= start_date) & (df_pg_part2["DT_APPL"] <= report_date)
+                mask = col_type_unsecured & date_in_range
+                unsecured_count = mask.sum()
+            
+            return unsecured_count
+
+        # Task 4: 12 months
+        task4_result = count_unsecured_in_period(one_year_ago)
+
+        # Task 5: 18 months
+        task5_result = count_unsecured_in_period(eighteen_months_ago)
+
+        return str(task4_result), str(task5_result)
+
+    def calculate_task6_optimized(self, df_pg_part2, latest_report_date):
+        """
+        Task 6: Thin CCRIS analysis (months between dates + facility diversity).
         
+        Args:
+            df_pg_part2: Part 2 data for customer
+            latest_report_date: Latest report date
+            
+        Returns:
+            tuple: (months_difference, only_one_facility) as strings
+        """
+        if df_pg_part2.empty:
+            return "-", "-"
+
         # Calculate months difference
         earliest_date = df_pg_part2["DT_APPL"].min()
         report_date = latest_report_date if latest_report_date else df_pg_part2["DT_APPL"].max()
-        
+
         months_diff = "-"
         if pd.notna(earliest_date) and pd.notna(report_date):
             months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
-        
-        # Check if only one facility type
-        only_one_facility = "Yes" if df_pg_part2["FCY_TYPE"].nunique() == 1 else "No"
-        
+
+        # Only count non-empty, non-NaN facilities
+        facilities = df_pg_part2["FCY_TYPE"].dropna().astype(str).str.strip()
+        facilities = facilities[(facilities != "") & (facilities != "NaN") & (facilities != "-")]
+        only_one_facility = "Yes" if facilities.nunique() == 1 else "No"
+
         return str(months_diff), only_one_facility
 
     def calculate_task7_8_optimized(self, df_pg_part2):
-        """Optimized Task 7 & 8 calculation"""
+        """Fixed Task 7 & 8 calculation - treat NaN as unsecured"""
         if df_pg_part2.empty:
             return "-", "-", "-", "-"
         
-        # **OPTIMIZATION 6: Vectorized grouping logic**
         df_pg_part2 = df_pg_part2.reset_index(drop=True)
+        df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
         
-        # Find date anchors (rows with valid dates)
-        date_mask = df_pg_part2["DT_APPL"].notna()
+        # Find date anchors
+        def is_valid_date(date_val):
+            if pd.isna(date_val):
+                return False
+            date_str = str(date_val).strip()
+            if date_str in ["-", "", "NaN", "nan", "None", "none"]:
+                return False
+            if any(char.isdigit() for char in date_str) and ("-" in date_str or "/" in date_str):
+                return True
+            return False
+        
+        date_mask = df_pg_part2["DT_APPL"].apply(is_valid_date)
         date_indices = df_pg_part2.index[date_mask].tolist()
         date_indices.append(len(df_pg_part2))  # Add sentinel
         
@@ -1672,22 +2325,24 @@ class ExcelAllTask:
         task8_count = 0
         task8_outstanding = 0.0
         
-        # Process groups efficiently
+        # Process groups
         for i in range(len(date_indices) - 1):
             start_idx = date_indices[i]
             end_idx = date_indices[i + 1]
             group = df_pg_part2.iloc[start_idx:end_idx]
             
-            # Vectorized operations
-            has_secured = (group["COL_TYPE"] != "0").any()
-            all_unsecured = (group["COL_TYPE"] == "0").all()
-            group_outstanding = group["IM_AM"].sum()
+            # **FIXED: Treat "NaN", "-", "0" as unsecured**
+            secured_items = group[~group["COL_TYPE"].astype(str).isin(["0", "-", "NaN", "nan", "None", "none"])]
             
-            if has_secured:
+            if not secured_items.empty:
+                # At least one secured item in group
                 task7_count += 1
+                group_outstanding = group["IM_AM"].sum()
                 task7_outstanding += group_outstanding
-            elif all_unsecured:
+            else:
+                # All items are unsecured
                 task8_count += 1
+                group_outstanding = group["IM_AM"].sum()
                 task8_outstanding += group_outstanding
         
         # Format results
@@ -1700,6 +2355,16 @@ class ExcelAllTask:
 
 
     def get_latest_report_date(self, df_pg_part4, df_pg_part2):
+        """
+        Get the latest report date from either part 4 or part 2 data.
+        
+        Args:
+            df_pg_part4 (DataFrame): Customer data from part 4
+            df_pg_part2 (DataFrame): Customer data from part 2
+            
+        Returns:
+            datetime or None: Latest report date found, or None if not available
+        """
         if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
             date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], format="%d/%m/%Y", errors="coerce").max()
             if pd.notna(date):
@@ -1709,164 +2374,6 @@ class ExcelAllTask:
             if pd.notna(date):
                 return date
         return None
-
-    def get_task_summaries_for_pg(self, pg, excel_data):
-        df_part2 = excel_data.get("part_2", pd.DataFrame())
-        df_part4 = excel_data.get("part_4", pd.DataFrame())
-        df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy() if not df_part2.empty else pd.DataFrame()
-        df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy() if not df_part4.empty else pd.DataFrame()
-
-        # Task 1: Pending applications in last One month
-        task1 = "-"
-        pending_count_last_month = 0
-        if "part_4" in excel_data and pg:
-            df_part4 = excel_data["part_4"]
-            df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg]
-            if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
-                if pd.notna(latest_report_date):
-                    one_month_ago = latest_report_date - pd.DateOffset(months=1)
-                    mask = (
-                        (df_pg_part4["APPL_STS"] == "P") &
-                        (pd.to_datetime(df_pg_part4["DT_APPL"], errors="coerce") >= one_month_ago) &
-                        (pd.to_datetime(df_pg_part4["DT_APPL"], errors="coerce") <= latest_report_date)
-                    )
-                    pending_count_last_month = mask.sum()
-        task1 = f"{pending_count_last_month}"
-
-        # Task 2: Credit Card utilization
-        task2 = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
-            df_pg_part2["FCY_TYPE"] = df_pg_part2["FCY_TYPE"].astype(str).str.strip().str.upper()
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
-            df_pg_part2["IM_LIM_AM"] = pd.to_numeric(df_pg_part2["IM_LIM_AM"], errors="coerce").fillna(0)
-            df_pg_part2 = df_pg_part2.reset_index(drop=True)
-
-            crdtcard_rows = df_pg_part2[df_pg_part2["FCY_TYPE"] == "CRDTCARD"]
-            crdtcard_outstanding = crdtcard_rows["IM_AM"].sum()
-            used_approval_dates = set()
-            total_limit = 0
-            for idx in crdtcard_rows.index:
-                found_limit = 0
-                found_date = None
-                for prev_idx in range(idx, -1, -1):
-                    appr_date = str(df_pg_part2.loc[prev_idx, "DT_APPL"]).strip()
-                    if appr_date not in ["-", "", "NaN", "nan"] and pd.notna(appr_date):
-                        found_date = appr_date
-                        found_limit = df_pg_part2.loc[prev_idx, "IM_LIM_AM"]
-                        break
-                if found_date and found_date not in used_approval_dates:
-                    total_limit += found_limit
-                    used_approval_dates.add(found_date)
-            if total_limit > 0:
-                ratio = crdtcard_outstanding / total_limit
-                task2 = f"{ratio:.2%}"
-            else:
-                task2 = "No outstanding found"
-
-        # Task 3: CCRIS Age (earliest approval date)
-        task3 = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
-            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-            if not df_pg_part2["DT_APPL"].isna().all():
-                earliest_date = df_pg_part2["DT_APPL"].min()
-                task3 = f"{earliest_date.strftime('%d-%m-%Y')}"
-
-        # Task 4: Number of Unsecured Facilities Approved in the last 12 months
-        task4 = "-"
-        latest_report_date = self.get_latest_report_date(df_pg_part4, df_pg_part2)
-        if latest_report_date is not None and not df_pg_part2.empty:
-            one_year_ago = latest_report_date - pd.DateOffset(months=12)
-            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-            mask = (
-                (df_pg_part2["COL_TYPE"] == "0") &
-                (df_pg_part2["DT_APPL"] >= one_year_ago) &
-                (df_pg_part2["DT_APPL"] <= latest_report_date)
-            )
-            unsecured_rows = df_pg_part2[mask]
-            task4 = f"{len(unsecured_rows) if not unsecured_rows.empty else '-'}"
-
-        # Task 5: Number of Unsecured Facilities Approved in the last 18 months
-        task5 = "-"
-        if latest_report_date is not None and not df_pg_part2.empty:
-            eighteen_months_ago = latest_report_date - pd.DateOffset(months=18)
-            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-            mask = (
-                (df_pg_part2["COL_TYPE"] == "0") &
-                (df_pg_part2["DT_APPL"] >= eighteen_months_ago) &
-                (df_pg_part2["DT_APPL"] <= latest_report_date)
-            )
-            unsecured_rows_18 = df_pg_part2[mask]
-            task5 = f"{len(unsecured_rows_18) if not unsecured_rows_18.empty else '-'}"
-
-        # Task 6: Thin CCRIS
-        task6a = "-"
-        task6b = "-"
-        if "part_2" in excel_data and pg:
-            df_part2 = excel_data["part_2"]
-            df_pg_part2 = df_part2[df_part2["NU_PTL"] == pg].copy()
-            df_pg_part2["DT_APPL"] = pd.to_datetime(df_pg_part2["DT_APPL"], errors="coerce")
-            earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
-            report_date = None
-            if "part_4" in excel_data:
-                df_part4 = excel_data["part_4"]
-                df_pg_part4 = df_part4[df_part4["NU_PTL"] == pg].copy()
-                if not df_pg_part4.empty and "TM_AGG_UTE" in df_pg_part4.columns:
-                    latest_report_date = pd.to_datetime(df_pg_part4["TM_AGG_UTE"], errors="coerce").max()
-                    if pd.notna(latest_report_date):
-                        report_date = latest_report_date
-            if report_date is None and not df_pg_part2["DT_APPL"].isna().all():
-                report_date = df_pg_part2["DT_APPL"].max()
-            months_diff = "-"
-            if earliest_date is not None and report_date is not None:
-                months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
-            only_one_facility = "No"
-            if df_pg_part2["FCY_TYPE"].nunique() == 1:
-                only_one_facility = "Yes"
-            task6a = f"{months_diff}"
-            task6b = f"{only_one_facility}"
-
-        # Task 7 & 8: Group by date anchor logic
-        task7a = 0
-        task7b = 0.0
-        task8a = 0
-        task8b = 0.0
-
-        if not df_pg_part2.empty:
-            df_pg_part2 = df_pg_part2.reset_index(drop=True)
-            df_pg_part2["IM_AM"] = pd.to_numeric(df_pg_part2["IM_AM"], errors="coerce").fillna(0)
-            date_mask = ~df_pg_part2["DT_APPL"].isin(["-", "", None]) & ~df_pg_part2["DT_APPL"].isna()
-            group_indices = df_pg_part2.index[date_mask].tolist()
-            group_indices.append(len(df_pg_part2))  # sentinel for last group
-
-            for i in range(len(group_indices) - 1):
-                start = group_indices[i]
-                end = group_indices[i + 1]
-                group = df_pg_part2.iloc[start:end]
-                if (group["COL_TYPE"] != "0").any():
-                    task7a += 1
-                    task7b += group["IM_AM"].sum()
-                elif (group["COL_TYPE"] == "0").all():
-                    task8a += 1
-                    task8b += group["IM_AM"].sum()
-
-        # Format output
-        task7a_str = f"{task7a}" if task7a > 0 else "-"
-        task7b_str = f"{task7b:,.2f}" if task7a > 0 else "-"
-        task8a_str = f"{task8a}" if task8a > 0 else "-"
-        task8b_str = f"{task8b:,.2f}" if task8a > 0 else "-"
-
-        return [
-            task1, task2, task3, task4, task5,
-            task6a, task6b,
-            task7a_str, task7b_str,
-            task8a_str, task8b_str
-        ]
-
  
 # --- Main Content Area ---
 main_content = ctk.CTkFrame(app)
