@@ -54,9 +54,9 @@ SIDEBAR_EXPANDED_WIDTH = 175
 SIDEBAR_SHRUNK_WIDTH = 48
 
 sidebar_container = ctk.CTkFrame(app, fg_color="transparent")
-sidebar_container.pack(side="left", fill="y")
+sidebar_container.pack(side="left", fill="y", padx=5, pady=5)
 
-sidebar = ctk.CTkFrame(sidebar_container, width=SIDEBAR_EXPANDED_WIDTH)
+sidebar = ctk.CTkFrame(sidebar_container, width=SIDEBAR_EXPANDED_WIDTH, corner_radius=10)
 sidebar.pack(side="left", fill="y")
 sidebar.pack_propagate(False)
 
@@ -296,7 +296,7 @@ class CCRISReport:
         
         # --- Scrollable Frame Setup ---
         self.outer_frame = ctk.CTkFrame(parent)
-        self.outer_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.outer_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         self.loading_label = ctk.CTkLabel(self.outer_frame, text="", fg_color="#141414")
         self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
@@ -318,8 +318,8 @@ class CCRISReport:
         # Use a regular Canvas for scrolling
         self.canvas = tk.Canvas(self.outer_frame, borderwidth=0, highlightthickness=0, bg="#222222")
         self.scrollbar = ctk.CTkScrollbar(self.outer_frame, orientation="vertical", command=self.canvas.yview)
-        self.scrollbar.pack(side="right", fill="y")
-        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y", padx=5, pady=5)
+        self.canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
         # Create a frame inside the canvas
@@ -340,7 +340,7 @@ class CCRISReport:
 
         # Header
         self.header = ctk.CTkFrame(self.frame)
-        self.header.pack(fill="x", pady=10)
+        self.header.pack(fill="x", pady=5, padx=5)
         logo_image = ctk.CTkImage(Image.open("Picture/bnm_logo.png"), size=(300, 56))
         alrajhi_logo_image = ctk.CTkImage(Image.open("Picture/alrajhi_logo.png"), size=(170, 60))
         self.header.columnconfigure((0, 1, 2), weight=1)
@@ -351,7 +351,7 @@ class CCRISReport:
         # Replace your entire "Controls" section with the following grid-only layout:
 
         self.control_frame = ctk.CTkFrame(self.frame)
-        self.control_frame.pack(fill="x", pady=5)  # use pack to place the frame in self.frame
+        self.control_frame.pack(fill="x", pady=5, padx=5)  # use pack to place the frame in self.frame
 
         # Configure columns of the control_frame (you can adjust weights as needed)
         self.control_frame.grid_columnconfigure(0, weight=1)  # Import button column
@@ -415,10 +415,10 @@ class CCRISReport:
         self.arrears_label.grid(row=0, column=2, padx=10, pady=5, sticky="e")
 
         # Table Section
-        self.table_section = ctk.CTkFrame(self.frame)
-        self.table_section.pack(fill="both", expand=True, padx=10, pady=10)
+        self.table_section = ctk.CTkFrame(self.frame, corner_radius=10, border_color="#444444", border_width=1)
+        self.table_section.pack(fill="both", expand=True, padx=5, pady=5)
         self.table_section.update_idletasks()
-        self.table_section.configure(width=1800)  # or a value wide enough for all columns
+        self.table_section.configure(width=1700)  # or a value wide enough for all columns
         
         # Table columns
         self.outstanding_cols = ["No", "Approval Date", "Status", "Capacity", "Lender", "Branch", "Facility",
@@ -427,15 +427,15 @@ class CCRISReport:
  
         
         # Outstanding Credit
-        ctk.CTkLabel(self.table_section, text="Outstanding Credit", font=("Consolas", 14, "bold")).pack(anchor="w")
-        self.outstanding_tree = self.create_table(self.table_section, self.outstanding_cols, height=6)
+        ctk.CTkLabel(self.table_section, text="Outstanding Credit", font=("Consolas", 14, "bold")).pack(anchor="w", pady=(5, 5), padx=(5, 5))
+        self.outstanding_tree = self.create_table(self.table_section, self.outstanding_cols, height=5)
  
         # Special Attention
-        ctk.CTkLabel(self.table_section, text="Special Attention Account", font=("Consolas", 14, "bold")).pack(anchor="w")
+        ctk.CTkLabel(self.table_section, text="Special Attention Account", font=("Consolas", 14, "bold")).pack(anchor="w", pady=(5, 5), padx=(5, 5))
         self.attention_tree = self.create_table(self.table_section, self.outstanding_cols, height=4)
  
         # Application for Credit
-        ctk.CTkLabel(self.table_section, text="Application for Credit", font=("Consolas", 14, "bold")).pack(anchor="w")
+        ctk.CTkLabel(self.table_section, text="Application for Credit", font=("Consolas", 14, "bold")).pack(anchor="w", pady=(5, 5), padx=(5, 5))
         self.application_tree = self.create_table(self.table_section, self.outstanding_cols, height=4)
  
         # Data
@@ -1042,13 +1042,13 @@ class TaskTabBar:
 
         # --- Main panel frame ---
         self.frame = ctk.CTkFrame(parent, fg_color="#23272e", corner_radius=10)
-        self.frame.pack(side="bottom", fill="x")
+        self.frame.pack(side="bottom", fill="x", padx=5, pady=5)
         self.frame.configure(height=self.default_height)
         self.frame.pack_propagate(False)
 
         # --- Grip bar for resizing ---
         self.grip = ctk.CTkFrame(self.frame, height=8, fg_color="#444", cursor="sb_v_double_arrow")
-        self.grip.pack(fill="x", side="top")
+        self.grip.pack(fill="x", side="top", padx=5, pady=(0, 5))
         self.grip.bind("<ButtonPress-1>", self.start_resize)
         self.grip.bind("<B1-Motion>", self.perform_resize)
         self.grip.bind("<Double-Button-1>", self.toggle_minimize)
@@ -1252,51 +1252,65 @@ class TaskTabBar:
             if pd.notna(report_date):
                 one_year_ago = report_date - pd.DateOffset(months=12)
                 
-                # Debug: Print data for troubleshooting
-                print(f"DEBUG Task 4 - PG: {pg}")
-                print(f"DEBUG - Report Date: {report_date}")
-                print(f"DEBUG - One Year Ago: {one_year_ago}")
-                print(f"DEBUG - Data shape: {df_pg_part2.shape}")
-                if not df_pg_part2.empty:
-                    print(f"DEBUG - COL_TYPE values: {df_pg_part2['COL_TYPE'].astype(str).str.strip().unique()}")
-                    print(f"DEBUG - DT_APPL values: {df_pg_part2['DT_APPL'].tolist()}")
-                    print(f"DEBUG - Sample rows:")
-                    for idx, row in df_pg_part2.iterrows():
-                        col_type = str(row['COL_TYPE']).strip()
-                        dt_appl = row['DT_APPL']
-                        is_unsecured = col_type in ["0", "-", "NaN", "nan"]
-                        is_in_range = pd.notna(dt_appl) and dt_appl >= one_year_ago and dt_appl <= report_date
-                        print(f"  Row {idx}: COL_TYPE='{col_type}', DT_APPL={dt_appl}, Unsecured={is_unsecured}, InRange={is_in_range}")
-                
-                # Modified mask to include 'NaN' and 'nan' as unsecured, and handle grouped data
-                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
-                date_in_range = (df_pg_part2["DT_APPL"] >= one_year_ago) & (df_pg_part2["DT_APPL"] <= report_date)
-                
-                # For cases where COL_TYPE and DT_APPL might be in different rows, 
-                # check if any row in the customer data has both unsecured COL_TYPE and valid date
+                # Helper function to check if COL_TYPE indicates secured (has numbers)
+                def is_secured_col_type(col_val):
+                    if pd.isna(col_val):
+                        return False
+                    col_str = str(col_val).strip()
+                    if col_str in ["0", "-", "", "NaN", "nan", "None", "none"]:
+                        return False
+                    # Check if it contains digits (indicating secured collateral)
+                    return any(char.isdigit() for char in col_str)
+
+                # Helper function to check if date is valid
+                def is_valid_date(date_val):
+                    return pd.notna(date_val)
+
+                # Create date-based groups
+                df_pg_part2 = df_pg_part2.reset_index(drop=True)
+                groups = []
+                current_group = []
+                current_date = None
+
+                for idx, row in df_pg_part2.iterrows():
+                    if is_valid_date(row["DT_APPL"]):
+                        # Start new group if we have a previous group
+                        if current_group:
+                            groups.append((current_date, current_group))
+                        # Start new group
+                        current_date = row["DT_APPL"]
+                        current_group = [idx]
+                    else:
+                        # Add to current group (belongs to previous date)
+                        if current_group:
+                            current_group.append(idx)
+
+                # Add the last group
+                if current_group and current_date is not None:
+                    groups.append((current_date, current_group))
+
+                # Count unsecured groups in 12 months
                 unsecured_count = 0
-                matching_rows = []
+                matching_groups = []
                 
-                # Group by REC_CTR to handle cases where data spans multiple rows
-                if 'REC_CTR' in df_pg_part2.columns:
-                    for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
-                        has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
-                        has_valid_date = any(pd.notna(dt) and dt >= one_year_ago and dt <= report_date for dt in group['DT_APPL'])
+                for group_date, group_indices in groups:
+                    # Check if group date is in range
+                    if group_date >= one_year_ago and group_date <= report_date:
+                        # Check if ANY row in group has secured collateral
+                        is_group_secured = False
+                        for idx in group_indices:
+                            if is_secured_col_type(df_pg_part2.iloc[idx]["COL_TYPE"]):
+                                is_group_secured = True
+                                break
                         
-                        if has_unsecured and has_valid_date:
+                        # Only count if group is unsecured
+                        if not is_group_secured:
                             unsecured_count += 1
-                            matching_rows.append(str(rec_ctr))
-                else:
-                    # Fallback: use original row-based logic but include NaN
-                    mask = col_type_unsecured & date_in_range
-                    unsecured_rows = df_pg_part2[mask]
-                    unsecured_count = len(unsecured_rows)
-                    matching_rows = unsecured_rows["REC_CTR"].astype(str).tolist() if not unsecured_rows.empty else []
-                
+                            matching_groups.append(f"Group{len(matching_groups)+1}")
+
                 task4_result = unsecured_count
-                task4_rows = ", ".join(matching_rows) if matching_rows else "-"
-                print(f"DEBUG - Task 4 Result: {task4_result}, Rows: {task4_rows}")
-                print("=" * 50)
+                task4_rows = ", ".join(matching_groups) if matching_groups else "-"
+
         task4_text = (
             f"4. Number of unsecured facilities in last 12 months: {task4_result}\n"
             f"Row No: {task4_rows}\n"
@@ -1319,38 +1333,64 @@ class TaskTabBar:
             if pd.notna(report_date):
                 eighteen_months_ago = report_date - pd.DateOffset(months=18)
                 
-                # Debug: Print data for troubleshooting
-                print(f"DEBUG Task 5 - PG: {pg}")
-                print(f"DEBUG - Report Date: {report_date}")
-                print(f"DEBUG - Eighteen Months Ago: {eighteen_months_ago}")
-                
-                # Modified mask to include 'NaN' and 'nan' as unsecured, and handle grouped data
-                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
-                date_in_range = (df_pg_part2["DT_APPL"] >= eighteen_months_ago) & (df_pg_part2["DT_APPL"] <= report_date)
-                
-                # For cases where COL_TYPE and DT_APPL might be in different rows, 
-                # check if any row in the customer data has both unsecured COL_TYPE and valid date
+                # Helper function to check if COL_TYPE indicates secured (has numbers)
+                def is_secured_col_type(col_val):
+                    if pd.isna(col_val):
+                        return False
+                    col_str = str(col_val).strip()
+                    if col_str in ["0", "-", "", "NaN", "nan", "None", "none"]:
+                        return False
+                    # Check if it contains digits (indicating secured collateral)
+                    return any(char.isdigit() for char in col_str)
+
+                # Helper function to check if date is valid
+                def is_valid_date(date_val):
+                    return pd.notna(date_val)
+
+                # Create date-based groups
+                df_pg_part2 = df_pg_part2.reset_index(drop=True)
+                groups = []
+                current_group = []
+                current_date = None
+
+                for idx, row in df_pg_part2.iterrows():
+                    if is_valid_date(row["DT_APPL"]):
+                        # Start new group if we have a previous group
+                        if current_group:
+                            groups.append((current_date, current_group))
+                        # Start new group
+                        current_date = row["DT_APPL"]
+                        current_group = [idx]
+                    else:
+                        # Add to current group (belongs to previous date)
+                        if current_group:
+                            current_group.append(idx)
+
+                # Add the last group
+                if current_group and current_date is not None:
+                    groups.append((current_date, current_group))
+
+                # Count unsecured groups in 18 months
                 unsecured_count = 0
-                matching_rows = []
+                matching_groups = []
                 
-                # Group by REC_CTR to handle cases where data spans multiple rows
-                if 'REC_CTR' in df_pg_part2.columns:
-                    for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
-                        has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
-                        has_valid_date = any(pd.notna(dt) and dt >= eighteen_months_ago and dt <= report_date for dt in group['DT_APPL'])
+                for group_date, group_indices in groups:
+                    # Check if group date is in range
+                    if group_date >= eighteen_months_ago and group_date <= report_date:
+                        # Check if ANY row in group has secured collateral
+                        is_group_secured = False
+                        for idx in group_indices:
+                            if is_secured_col_type(df_pg_part2.iloc[idx]["COL_TYPE"]):
+                                is_group_secured = True
+                                break
                         
-                        if has_unsecured and has_valid_date:
+                        # Only count if group is unsecured
+                        if not is_group_secured:
                             unsecured_count += 1
-                            matching_rows.append(str(rec_ctr))
-                else:
-                    # Fallback: use original row-based logic but include NaN
-                    mask = col_type_unsecured & date_in_range
-                    unsecured_rows = df_pg_part2[mask]
-                    unsecured_count = len(unsecured_rows)
-                    matching_rows = unsecured_rows["REC_CTR"].astype(str).tolist() if not unsecured_rows.empty else []
-                
+                            matching_groups.append(f"Group{len(matching_groups)+1}")
+
                 task5_result = unsecured_count
-                task5_rows = ", ".join(matching_rows) if matching_rows else "-"
+                task5_rows = ", ".join(matching_groups) if matching_groups else "-"
                 print(f"DEBUG - Task 5 Result: {task5_result}, Rows: {task5_rows}")
                 print("=" * 50)
         task5_text = (
@@ -1380,9 +1420,8 @@ class TaskTabBar:
             if earliest_date is not None and report_date is not None:
                 months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
             # b. Only 1 facility?
-            facilities = df_pg_part2["FCY_TYPE"].dropna().astype(str).str.strip()
-            facilities = facilities[(facilities != "") & (facilities != "NaN") & (facilities != "-")]
-            only_one_facility = "Yes" if facilities.nunique() == 1 else "No"
+            facility_rows = df_pg_part2[~df_pg_part2["FCY_TYPE"].isin(["", "NaN", "-", None, "nan"])]
+            only_one_facility = "Yes" if len(facility_rows) == 1 else "No"
             task6_result = f"a. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}"
             task6_text = f"6. Thin CCRIS:\na. Months: {months_diff}\nb. Only 1 facility: {only_one_facility}\n"
 
@@ -1587,7 +1626,7 @@ class ExcelAllTask:
             "earliest date",
             "Unsecured Facilities Approved last 12 months",
             "Unsecured Facilities Approved last 18 months",
-            "Date CCRIS pulled – Date earliest financing",
+            "Date CCRIS pulled – Date earliest financing (Month)",
             "only 1 facility",
             "Secured financing",
             "Secured financing (Total outstanding)",
@@ -1631,7 +1670,6 @@ class ExcelAllTask:
         self.prev_btn.pack(side="left", padx=(2, 2), pady=2)
         self.prev_btn.bind("<ButtonPress-1>", self._start_prev_repeat)
         self.prev_btn.bind("<ButtonRelease-1>", self._stop_prev_repeat)
-        
 
         ctk.CTkLabel(search_entry_frame, image=search_icon, text="", fg_color="transparent").pack(side="left", padx=(2, 2))
         search_entry = ctk.CTkEntry(
@@ -1738,12 +1776,18 @@ class ExcelAllTask:
         yscroll.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=yscroll.set)
         
+        # Add right-click context menu for NU_PTL
+        self.tree.bind("<Button-3>", self.show_context_menu)
+        self.context_menu = tk.Menu(self.frame, tearoff=0)
+        self.context_menu.add_command(label="View Report", command=self.navigate_to_report)
+        self.selected_nuptl = None
+        
         self.grid_populated = False
         
     def _start_next_repeat(self, event=None):
         self._stop_next_repeat()
         def slow_repeat():
-            self.on_next_match()
+            self.on_next()
             self._repeat_job = self.frame.after(400, slow_repeat)
         slow_repeat()
         # After 5 seconds, switch to fast repeat
@@ -1752,7 +1796,7 @@ class ExcelAllTask:
     def _switch_to_fast_next_repeat(self):
         self._stop_next_repeat()
         def fast_repeat():
-            self.on_next_match()
+            self.on_next()
             self._repeat_fast_job = self.frame.after(80, fast_repeat)
         fast_repeat()
 
@@ -1770,7 +1814,7 @@ class ExcelAllTask:
     def _start_prev_repeat(self, event=None):
         self._stop_prev_repeat()
         def slow_repeat():
-            self.on_prev_match()
+            self.on_previous()
             self._repeat_job = self.frame.after(400, slow_repeat)
         slow_repeat()
         self._repeat_fast_timer = self.frame.after(5000, self._switch_to_fast_prev_repeat)
@@ -1778,7 +1822,7 @@ class ExcelAllTask:
     def _switch_to_fast_prev_repeat(self):
         self._stop_prev_repeat()
         def fast_repeat():
-            self.on_prev_match()
+            self.on_previous()
             self._repeat_fast_job = self.frame.after(80, fast_repeat)
         fast_repeat()
 
@@ -1793,6 +1837,44 @@ class ExcelAllTask:
             self.frame.after_cancel(self._repeat_fast_timer)
             self._repeat_fast_timer = None
 
+    def on_previous(self):
+        """Navigate to the previous customer in the dropdown list."""
+        current_index = self.pg_dropdown.current()
+        if current_index > 0:
+            self.pg_dropdown.current(current_index - 1)
+            self.load_pg_data()
+
+    def on_next(self):
+        """Navigate to the next customer in the dropdown list."""
+        current_index = self.pg_dropdown.current()
+        if current_index < len(self.pg_dropdown['values']) - 1:
+            self.pg_dropdown.current(current_index + 1)
+            self.load_pg_data()
+        
+    def show_loading(self):
+        """Display animated loading GIF overlay during data processing."""
+        self.loading_label.lift()
+        self.loading_gif_running = True
+        self.animate_loading_gif(0)
+
+    def hide_loading(self):
+        """Hide the loading GIF overlay."""
+        self.loading_label.lower()
+        self.loading_gif_running = False
+
+    def animate_loading_gif(self, idx):
+        """
+        Animate the loading GIF by cycling through frames.
+        
+        Args:
+            idx (int): Current frame index
+        """
+        if not self.loading_gif_running:
+            return
+        frame = self.loading_frames[idx]
+        self.loading_label.configure(image=frame, text="")
+        next_idx = (idx + 1) % len(self.loading_frames)
+        self.frame.after(60, lambda: self.animate_loading_gif(next_idx))
 
     def export_data(self):
         """
@@ -1894,6 +1976,68 @@ class ExcelAllTask:
         if self.matching_row_ids:
             prev_idx = (self.match_index - 1) % len(self.matching_row_ids)
             self.highlight_match(prev_idx)
+
+    def show_context_menu(self, event):
+        """Show context menu for NU_PTL column when right-clicked"""
+        try:
+            # Identify which row and column was clicked
+            item = self.tree.identify_row(event.y)
+            column = self.tree.identify_column(event.x)
+            
+            if item and column:
+                # Check if clicked on NU_PTL column (first column is #1)
+                if column == "#1":  # NU_PTL is the first column
+                    values = self.tree.item(item, "values")
+                    if values and len(values) > 0:
+                        self.selected_nuptl = str(values[0])  # First column is NU_PTL
+                        
+                        # Select the row to show which NU_PTL is selected
+                        self.tree.selection_set(item)
+                        self.tree.focus(item)
+                        
+                        # Show context menu
+                        self.context_menu.tk_popup(event.x_root, event.y_root)
+                else:
+                    # Clicked on other columns, show info message
+                    messagebox.showinfo("Info", "Right-click on NU_PTL column to view report")
+        except Exception as e:
+            print(f"Error in context menu: {e}")
+        finally:
+            try:
+                self.context_menu.grab_release()
+            except:
+                pass
+
+    def navigate_to_report(self):
+        """Navigate to CCRIS report with selected NU_PTL"""
+        if not self.selected_nuptl:
+            messagebox.showwarning("Warning", "No NU_PTL selected")
+            return
+        
+        try:
+            # Check if the NU_PTL exists in the dropdown values
+            if self.selected_nuptl in [str(x) for x in ccris_report.pg_list]:
+                # Set the NU_PTL in CCRIS report dropdown
+                ccris_report.selected_pg_rqs.set(self.selected_nuptl)
+                
+                # Update the dropdown selection
+                dropdown_values = ccris_report.pg_dropdown['values']
+                if self.selected_nuptl in dropdown_values:
+                    index = list(dropdown_values).index(self.selected_nuptl)
+                    ccris_report.pg_dropdown.current(index)
+                
+                # Load the data for this NU_PTL
+                ccris_report.load_pg_data()
+                
+                # Hide ExcelAllTask and show CCRIS report
+                self.hide()
+                ccris_report.outer_frame.pack(fill="both", expand=True, padx=10, pady=10)
+                
+                messagebox.showinfo("Navigation", f"Switched to CCRIS report for NU_PTL: {self.selected_nuptl}")
+            else:
+                messagebox.showwarning("Warning", f"NU_PTL {self.selected_nuptl} not found in CCRIS data")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to navigate to report: {e}")
 
     def show_loading(self):
         """Display loading animation with progress tracking."""
@@ -2219,7 +2363,8 @@ class ExcelAllTask:
     def calculate_task4_5_optimized(self, df_pg_part2, _unused=None):
         """
         Task 4 & 5: Count unsecured facilities in 12 and 18 months.
-        Uses TM_AGG_UTE from part_2 as report date if available.
+        Uses date-based grouping where rows without dates belong to the previous date group.
+        A group is considered secured if ANY row in the group has a number in COL_TYPE.
         """
         if df_pg_part2.empty:
             return "-", "-"
@@ -2239,24 +2384,60 @@ class ExcelAllTask:
         one_year_ago = report_date - pd.DateOffset(months=12)
         eighteen_months_ago = report_date - pd.DateOffset(months=18)
 
-        # Helper function to count unsecured facilities by group
+        # Helper function to check if COL_TYPE indicates secured (has numbers)
+        def is_secured_col_type(col_val):
+            if pd.isna(col_val):
+                return False
+            col_str = str(col_val).strip()
+            if col_str in ["0", "-", "", "NaN", "nan", "None", "none"]:
+                return False
+            # Check if it contains digits (indicating secured collateral)
+            return any(char.isdigit() for char in col_str)
+
+        # Helper function to check if date is valid
+        def is_valid_date(date_val):
+            return pd.notna(date_val)
+
+        # Create date-based groups
+        df_pg_part2 = df_pg_part2.reset_index(drop=True)
+        groups = []
+        current_group = []
+        current_date = None
+
+        for idx, row in df_pg_part2.iterrows():
+            if is_valid_date(row["DT_APPL"]):
+                # Start new group if we have a previous group
+                if current_group:
+                    groups.append((current_date, current_group))
+                # Start new group
+                current_date = row["DT_APPL"]
+                current_group = [idx]
+            else:
+                # Add to current group (belongs to previous date)
+                if current_group:
+                    current_group.append(idx)
+
+        # Add the last group
+        if current_group and current_date is not None:
+            groups.append((current_date, current_group))
+
+        # Helper function to count unsecured groups in period
         def count_unsecured_in_period(start_date):
             unsecured_count = 0
             
-            # Group by REC_CTR to handle cases where data spans multiple rows
-            if 'REC_CTR' in df_pg_part2.columns:
-                for rec_ctr, group in df_pg_part2.groupby('REC_CTR'):
-                    has_unsecured = any(str(col).strip() in ["0", "-", "NaN", "nan"] for col in group['COL_TYPE'])
-                    has_valid_date = any(pd.notna(dt) and dt >= start_date and dt <= report_date for dt in group['DT_APPL'])
+            for group_date, group_indices in groups:
+                # Check if group date is in range
+                if group_date >= start_date and group_date <= report_date:
+                    # Check if ANY row in group has secured collateral
+                    is_group_secured = False
+                    for idx in group_indices:
+                        if is_secured_col_type(df_pg_part2.iloc[idx]["COL_TYPE"]):
+                            is_group_secured = True
+                            break
                     
-                    if has_unsecured and has_valid_date:
+                    # Only count if group is unsecured
+                    if not is_group_secured:
                         unsecured_count += 1
-            else:
-                # Fallback: use original row-based logic but include NaN
-                col_type_unsecured = df_pg_part2["COL_TYPE"].astype(str).str.strip().isin(["0", "-", "NaN", "nan"])
-                date_in_range = (df_pg_part2["DT_APPL"] >= start_date) & (df_pg_part2["DT_APPL"] <= report_date)
-                mask = col_type_unsecured & date_in_range
-                unsecured_count = mask.sum()
             
             return unsecured_count
 
@@ -2283,7 +2464,7 @@ class ExcelAllTask:
             return "-", "-"
 
         # Calculate months difference
-        earliest_date = df_pg_part2["DT_APPL"].min()
+        earliest_date = df_pg_part2["DT_APPL"].min() if not df_pg_part2["DT_APPL"].isna().all() else None
         report_date = latest_report_date if latest_report_date else df_pg_part2["DT_APPL"].max()
 
         months_diff = "-"
@@ -2291,9 +2472,8 @@ class ExcelAllTask:
             months_diff = (report_date.year - earliest_date.year) * 12 + (report_date.month - earliest_date.month)
 
         # Only count non-empty, non-NaN facilities
-        facilities = df_pg_part2["FCY_TYPE"].dropna().astype(str).str.strip()
-        facilities = facilities[(facilities != "") & (facilities != "NaN") & (facilities != "-")]
-        only_one_facility = "Yes" if facilities.nunique() == 1 else "No"
+        facility_rows = df_pg_part2[~df_pg_part2["FCY_TYPE"].isin(["", "NaN", "-", None, "nan"])]
+        only_one_facility = "Yes" if len(facility_rows) == 1 else "No"
 
         return str(months_diff), only_one_facility
 
