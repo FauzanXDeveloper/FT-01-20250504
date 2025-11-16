@@ -205,6 +205,18 @@ class PDFtoExcelApp(ctk.CTk):
         )
         self.clear_selections_btn.pack(side="right", padx=5)
         
+        # Auto Extract All Tables button
+        self.auto_extract_btn = ctk.CTkButton(
+            pdf_nav_frame,
+            text="⚡ Auto Extract All Tables",
+            command=self.auto_extract_all_tables,
+            width=180,
+            state="disabled",
+            fg_color="#ea580c",
+            hover_color="#c2410c"
+        )
+        self.auto_extract_btn.pack(side="right", padx=5)
+        
         # Apply to All Files button
         self.apply_all_btn = ctk.CTkButton(
             pdf_nav_frame,
@@ -521,6 +533,7 @@ class PDFtoExcelApp(ctk.CTk):
             self.select_table_btn.configure(state="normal")
             self.save_selection_btn.configure(state="normal")
             self.clear_selections_btn.configure(state="normal")
+            self.auto_extract_btn.configure(state="normal")
             
             # Enable apply button if multiple files selected
             if self.pdf_paths and len(self.pdf_paths) > 1:
@@ -781,8 +794,76 @@ class PDFtoExcelApp(ctk.CTk):
         remaining = sum(len(sels) for sels in self.temp_selections.values())
         self.status_label.configure(text=f"↶ Undone! {remaining} unsaved selection(s) remaining")
     
+    def auto_extract_all_tables(self):
+        """Automatically extract all tables from all pages with header/footer removal"""
+        if not self.pdf_document:
+            messagebox.showinfo("Info", "No PDF loaded!")
+            return
+        
+        try:
+            current_file = self.pdf_path
+            file_name = Path(current_file).name
+            
+            self.status_label.configure(text=f"Auto-extracting tables from {file_name}...")
+            self.update()
+            
+            with pdfplumber.open(current_file) as pdf:
+                all_tables = []
+                
+                for page_num, page in enumerate(pdf.pages):
+                    # Get page dimensions
+                    page_height = page.height
+                    
+                    # Define crop area (remove top 80px and bottom 80px)
+                    # pdfplumber uses points (72 points = 1 inch)
+                    header_crop = 80  # Top 80px to remove
+                    footer_crop = 80  # Bottom 80px to remove
+                    
+                    # Crop the page to remove header and footer
+                    cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
+                    
+                    # Extract all tables from cropped page
+                    tables = cropped_page.extract_tables()
+                    
+                    if tables:
+                        for table in tables:
+                            if table and len(table) > 0:
+                                all_tables.append(table)
+                
+                if all_tables:
+                    # Combine all tables with separators
+                    combined_rows = []
+                    for table_idx, table in enumerate(all_tables):
+                        combined_rows.extend(table)
+                        # Add separator between tables
+                        if table_idx < len(all_tables) - 1:
+                            num_cols = len(table[0]) if table else 1
+                            combined_rows.extend([[None] * num_cols] * 2)
+                    
+                    # Create DataFrame
+                    df = pd.DataFrame(combined_rows)
+                    
+                    # Store in file previews
+                    self.file_previews[file_name] = df
+                    
+                    # Update preview
+                    self.update_excel_preview()
+                    self.export_btn.configure(state="normal")
+                    
+                    self.status_label.configure(text=f"✓ Auto-extracted {len(all_tables)} tables from {len(pdf.pages)} pages!")
+                    messagebox.showinfo("Success", f"Auto-extracted {len(all_tables)} tables!\n\nHeader/footer areas (80px) removed automatically.\n\nCheck Excel Preview tab.")
+                else:
+                    messagebox.showwarning("No Tables", "No tables found in the PDF.")
+                    self.status_label.configure(text="⚠ No tables found")
+        
+        except Exception as e:
+            messagebox.showerror("Error", f"Auto-extraction failed:\n{str(e)}")
+            self.status_label.configure(text="✗ Auto-extraction failed")
+            import traceback
+            traceback.print_exc()
+    
     def apply_selections_to_all_files(self):
-        """Apply saved selections to all imported PDF files and generate preview"""
+        """Apply saved selections to all imported PDF files with header/footer removal"""
         if not self.pdf_paths:
             messagebox.showinfo("Info", "No multiple files selected!")
             return
@@ -796,6 +877,8 @@ class PDFtoExcelApp(ctk.CTk):
             self.update()
             
             processed_count = 0
+            header_crop = 80  # Top 80px to remove
+            footer_crop = 80  # Bottom 80px to remove
             
             for pdf_path in self.pdf_paths:
                 file_name = Path(pdf_path).name
@@ -808,12 +891,26 @@ class PDFtoExcelApp(ctk.CTk):
                         for page_num in sorted(self.saved_selections.keys()):
                             if page_num < len(pdf.pages):
                                 page = pdf.pages[page_num]
+                                page_height = page.height
+                                
+                                # Crop page to remove header/footer
+                                cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
                                 
                                 for bbox in self.saved_selections[page_num]:
                                     try:
-                                        table = page.crop(bbox).extract_table()
-                                        if table:
-                                            file_tables.append(pd.DataFrame(table))
+                                        # Adjust bbox coordinates for the cropped page
+                                        adjusted_bbox = (
+                                            bbox[0],
+                                            max(0, bbox[1] - header_crop),  # Adjust Y coordinate
+                                            bbox[2],
+                                            bbox[3] - header_crop
+                                        )
+                                        
+                                        # Only extract if bbox is within cropped area
+                                        if adjusted_bbox[1] >= 0 and adjusted_bbox[3] <= (page_height - header_crop - footer_crop):
+                                            table = cropped_page.crop(adjusted_bbox).extract_table()
+                                            if table:
+                                                file_tables.append(pd.DataFrame(table))
                                     except:
                                         continue
                         
@@ -837,8 +934,8 @@ class PDFtoExcelApp(ctk.CTk):
             self.update_excel_preview()
             self.export_btn.configure(state="normal")
             
-            self.status_label.configure(text=f"✓ Applied to {processed_count} files! Check Excel Preview tab.")
-            messagebox.showinfo("Success", f"Successfully applied selections to {processed_count} files!\n\nCheck the Excel Preview tab to see all files.")
+            self.status_label.configure(text=f"✓ Applied to {processed_count} files with header/footer removed!")
+            messagebox.showinfo("Success", f"Successfully applied selections to {processed_count} files!\n\nHeader/footer (80px) removed automatically.\n\nCheck the Excel Preview tab.")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply selections:\n{str(e)}")
@@ -1082,7 +1179,7 @@ class PDFtoExcelApp(ctk.CTk):
             traceback.print_exc()
     
     def batch_process_pdfs(self):
-        """Process multiple PDFs using saved selection areas"""
+        """Process multiple PDFs using saved selection areas with header/footer removal"""
         if not self.pdf_paths:
             messagebox.showerror("Error", "No PDF files selected for batch processing!")
             return
@@ -1102,6 +1199,8 @@ class PDFtoExcelApp(ctk.CTk):
         output_path = Path(output_folder)
         success_count = 0
         failed_files = []
+        header_crop = 80  # Top 80px to remove
+        footer_crop = 80  # Bottom 80px to remove
         
         try:
             total_files = len(self.pdf_paths)
@@ -1123,11 +1222,26 @@ class PDFtoExcelApp(ctk.CTk):
                         for page_num in sorted_pages:
                             if page_num < len(pdf.pages):
                                 page = pdf.pages[page_num]
+                                page_height = page.height
+                                
+                                # Crop page to remove header/footer
+                                cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
+                                
                                 for bbox in self.saved_selections[page_num]:
                                     try:
-                                        table = page.crop(bbox).extract_table()
-                                        if table:
-                                            all_extracted_tables.append(table)
+                                        # Adjust bbox coordinates for the cropped page
+                                        adjusted_bbox = (
+                                            bbox[0],
+                                            max(0, bbox[1] - header_crop),
+                                            bbox[2],
+                                            bbox[3] - header_crop
+                                        )
+                                        
+                                        # Only extract if bbox is within cropped area
+                                        if adjusted_bbox[1] >= 0 and adjusted_bbox[3] <= (page_height - header_crop - footer_crop):
+                                            table = cropped_page.crop(adjusted_bbox).extract_table()
+                                            if table:
+                                                all_extracted_tables.append(table)
                                     except:
                                         continue
                         
@@ -1162,6 +1276,7 @@ class PDFtoExcelApp(ctk.CTk):
             summary_msg = f"Batch Processing Complete!\n\n"
             summary_msg += f"Successfully processed: {success_count}/{total_files}\n"
             summary_msg += f"Used {total_selections} selection areas across {len(self.saved_selections)} pages\n"
+            summary_msg += f"Header/footer (80px) removed automatically\n"
             summary_msg += f"Output folder: {output_folder}\n"
             
             if failed_files:
