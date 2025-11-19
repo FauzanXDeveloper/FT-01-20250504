@@ -5,8 +5,10 @@ import pdfplumber
 from pathlib import Path
 import re
 import fitz  # PyMuPDF
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageFilter
 import io
+import threading
+import time
 
 class PDFtoExcelApp(ctk.CTk):
     def __init__(self):
@@ -38,6 +40,15 @@ class PDFtoExcelApp(ctk.CTk):
         self.selection_rectangles = []  # Visual rectangles on canvas
         self.temp_selections = {}  # Temporary selections before saving: {page_num: [(bbox, rect_id), ...]}
         self.selection_history = []  # History for undo: [(page_num, bbox, rect_id), ...]
+        
+        # Loading screen variables
+        self.loading_frame = None
+        self.loading_gif_frames = []
+        self.loading_gif_label = None
+        self.loading_progress_label = None
+        self.loading_current_frame = 0
+        self.loading_animation_job = None
+        self.blur_overlay = None
         
         # Create GUI
         self.create_widgets()
@@ -92,21 +103,18 @@ class PDFtoExcelApp(ctk.CTk):
         )
         self.select_folder_btn.pack(side="left", padx=10, pady=10)
         
-        # Second button row
-        button_frame2 = ctk.CTkFrame(self)
-        button_frame2.pack(pady=10, padx=20, fill="x")
-        
-        # File path label
-        self.file_label = ctk.CTkLabel(
-            button_frame2,
-            text="No file selected",
-            font=ctk.CTkFont(size=12)
+        # File count label
+        self.file_count_label = ctk.CTkLabel(
+            button_frame,
+            text="0 files",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
         )
-        self.file_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
+        self.file_count_label.pack(side="left", padx=20, pady=10)
         
         # Export Button
         self.export_btn = ctk.CTkButton(
-            button_frame2,
+            button_frame,
             text="📊 Export to Excel",
             command=self.export_to_excel,
             width=150,
@@ -120,7 +128,7 @@ class PDFtoExcelApp(ctk.CTk):
         
         # Batch Process Button
         self.batch_btn = ctk.CTkButton(
-            button_frame2,
+            button_frame,
             text="⚡ Batch Process All",
             command=self.batch_process_pdfs,
             width=150,
@@ -131,6 +139,9 @@ class PDFtoExcelApp(ctk.CTk):
             hover_color="#7e22ce"
         )
         self.batch_btn.pack(side="left", padx=10, pady=10)
+        
+        # Create Tabbed Interfaceabel to prevent errors (but don't pack it)
+        self.file_label = ctk.CTkLabel(self, text="")
         
         # Create Tabbed Interface
         self.tab_view = ctk.CTkTabview(self, width=1350, height=650)
@@ -144,34 +155,16 @@ class PDFtoExcelApp(ctk.CTk):
         pdf_nav_frame = ctk.CTkFrame(pdf_tab)
         pdf_nav_frame.pack(pady=5, padx=10, fill="x")
         
-        self.prev_btn = ctk.CTkButton(
-            pdf_nav_frame,
-            text="◀ Previous",
-            command=self.previous_page,
-            width=100,
-            state="disabled"
-        )
-        self.prev_btn.pack(side="left", padx=5)
+        # Create a frame for centered buttonsent errors (but don't pack it)
+        self.page_label = ctk.CTkLabel(pdf_nav_frame, text="")
         
-        self.page_label = ctk.CTkLabel(
-            pdf_nav_frame,
-            text="No PDF loaded",
-            font=ctk.CTkFont(size=12)
-        )
-        self.page_label.pack(side="left", padx=20, expand=True)
-        
-        self.next_btn = ctk.CTkButton(
-            pdf_nav_frame,
-            text="Next ▶",
-            command=self.next_page,
-            width=100,
-            state="disabled"
-        )
-        self.next_btn.pack(side="left", padx=5)
+        # Create a frame for centered buttons
+        button_container = ctk.CTkFrame(pdf_nav_frame)
+        button_container.pack(pady=5)
         
         # Selection mode button
         self.select_table_btn = ctk.CTkButton(
-            pdf_nav_frame,
+            button_container,
             text="📐 Select Table Area",
             command=self.toggle_selection_mode,
             width=150,
@@ -179,11 +172,11 @@ class PDFtoExcelApp(ctk.CTk):
             fg_color="purple",
             hover_color="darkviolet"
         )
-        self.select_table_btn.pack(side="right", padx=5)
+        self.select_table_btn.pack(side="left", padx=5)
         
         # Save Selection button
         self.save_selection_btn = ctk.CTkButton(
-            pdf_nav_frame,
+            button_container,
             text="💾 Save Selections",
             command=self.save_current_page_selections,
             width=150,
@@ -191,11 +184,11 @@ class PDFtoExcelApp(ctk.CTk):
             fg_color="#16a34a",
             hover_color="#15803d"
         )
-        self.save_selection_btn.pack(side="right", padx=5)
+        self.save_selection_btn.pack(side="left", padx=5)
         
         # Undo Selection button (was Clear Selections)
         self.clear_selections_btn = ctk.CTkButton(
-            pdf_nav_frame,
+            button_container,
             text="↶ Undo Selection",
             command=self.undo_last_selection,
             width=150,
@@ -203,11 +196,11 @@ class PDFtoExcelApp(ctk.CTk):
             fg_color="#dc2626",
             hover_color="#991b1b"
         )
-        self.clear_selections_btn.pack(side="right", padx=5)
+        self.clear_selections_btn.pack(side="left", padx=5)
         
         # Auto Extract All Tables button
         self.auto_extract_btn = ctk.CTkButton(
-            pdf_nav_frame,
+            button_container,
             text="⚡ Auto Extract All Tables",
             command=self.auto_extract_all_tables,
             width=180,
@@ -215,11 +208,23 @@ class PDFtoExcelApp(ctk.CTk):
             fg_color="#ea580c",
             hover_color="#c2410c"
         )
-        self.auto_extract_btn.pack(side="right", padx=5)
+        self.auto_extract_btn.pack(side="left", padx=5)
+        
+        # Clear Preview button
+        self.clear_preview_btn = ctk.CTkButton(
+            button_container,
+            text="🧹 Clear Preview",
+            command=self.clear_all_previews,
+            width=150,
+            state="disabled",
+            fg_color="#64748b",
+            hover_color="#475569"
+        )
+        self.clear_preview_btn.pack(side="left", padx=5)
         
         # Apply to All Files button
         self.apply_all_btn = ctk.CTkButton(
-            pdf_nav_frame,
+            button_container,
             text="📋 Apply to All Files",
             command=self.apply_selections_to_all_files,
             width=150,
@@ -227,7 +232,7 @@ class PDFtoExcelApp(ctk.CTk):
             fg_color="#0891b2",
             hover_color="#0e7490"
         )
-        self.apply_all_btn.pack(side="right", padx=5)
+        self.apply_all_btn.pack(side="left", padx=5)
         
         # PDF display canvas with scrollbar
         pdf_canvas_frame = ctk.CTkFrame(pdf_tab)
@@ -247,6 +252,20 @@ class PDFtoExcelApp(ctk.CTk):
         
         self.pdf_scrollbar.pack(side="right", fill="y")
         self.pdf_canvas.pack(side="left", fill="both", expand=True)
+
+        # Sticky nav buttons overlay (appear over canvas)
+        # Placed in the same frame so they float above the canvas content
+        self.sticky_prev = ctk.CTkButton(pdf_canvas_frame, text="◀ Previous", width=80, command=self.previous_page, state="disabled")
+        self.sticky_prev.place(relx=0.02, rely=0.98, anchor="sw")
+        
+        # Center sticky button for page info
+        self.sticky_center = ctk.CTkLabel(pdf_canvas_frame, text="No PDF loaded", width=120, 
+                                         font=ctk.CTkFont(size=11), 
+                                         fg_color="#2b2b2b", corner_radius=6)
+        self.sticky_center.place(relx=0.5, rely=0.98, anchor="s")
+        
+        self.sticky_next = ctk.CTkButton(pdf_canvas_frame, text="Next ▶", width=80, command=self.next_page, state="disabled")
+        self.sticky_next.place(relx=0.98, rely=0.98, anchor="se")
         
         # Bind mouse events for table selection
         self.pdf_canvas.bind("<ButtonPress-1>", self.on_mouse_down)
@@ -283,13 +302,40 @@ class PDFtoExcelApp(ctk.CTk):
         excel_display_frame = ctk.CTkFrame(excel_tab)
         excel_display_frame.pack(pady=5, padx=10, fill="both", expand=True)
         
-        self.excel_display = ctk.CTkTextbox(
+        # Create treeview with scrollbars for Excel-like display
+        tree_scroll_y = ctk.CTkScrollbar(excel_display_frame, orientation="vertical")
+        tree_scroll_y.pack(side="right", fill="y")
+        
+        tree_scroll_x = ctk.CTkScrollbar(excel_display_frame, orientation="horizontal")
+        tree_scroll_x.pack(side="bottom", fill="x")
+        
+        # Use tkinter Treeview for table display
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview",
+                        background="#2b2b2b",
+                        foreground="white",
+                        fieldbackground="#2b2b2b",
+                        borderwidth=1,
+                        relief="solid")
+        style.configure("Treeview.Heading",
+                        background="#1f538d",
+                        foreground="white",
+                        borderwidth=1)
+        style.map("Treeview",
+                  background=[("selected", "#144870")])
+        
+        self.excel_display = ttk.Treeview(
             excel_display_frame,
-            width=1300,
-            height=550,
-            font=ctk.CTkFont(size=10, family="Consolas")
+            yscrollcommand=tree_scroll_y.set,
+            xscrollcommand=tree_scroll_x.set,
+            show="tree headings",
+            selectmode="extended"
         )
         self.excel_display.pack(pady=10, padx=10, fill="both", expand=True)
+        
+        tree_scroll_y.configure(command=self.excel_display.yview)
+        tree_scroll_x.configure(command=self.excel_display.xview)
         
         # Status bar
         self.status_label = ctk.CTkLabel(
@@ -299,6 +345,138 @@ class PDFtoExcelApp(ctk.CTk):
             anchor="w"
         )
         self.status_label.pack(side="bottom", fill="x", padx=20, pady=10)
+        
+        # Setup loading screen
+        self.setup_loading_screen()
+    
+    def setup_loading_screen(self):
+        """Setup the loading screen with GIF animation and blur effect"""
+        try:
+            # Load GIF frames
+            gif_path = r"C:\Users\aaafauzan\Desktop\VS Code\Pdf to Excel\Picture\Loading.gif"
+            gif_image = Image.open(gif_path)
+            
+            # Extract all frames from GIF
+            self.loading_gif_frames = []
+            try:
+                while True:
+                    # Resize frame to reasonable size
+                    frame = gif_image.copy().resize((100, 100), Image.Resampling.LANCZOS)
+                    # Convert to CTkImage to avoid warnings
+                    ctk_frame = ctk.CTkImage(frame, size=(100, 100))
+                    self.loading_gif_frames.append(ctk_frame)
+                    gif_image.seek(len(self.loading_gif_frames))
+            except EOFError:
+                pass  # End of GIF frames
+                
+        except Exception as e:
+            print(f"Warning: Could not load loading GIF: {e}")
+            # Create a simple default loading image
+            default_img = Image.new('RGBA', (100, 100), (100, 100, 100, 255))
+            self.loading_gif_frames = [ctk.CTkImage(default_img, size=(100, 100))]
+    
+    def show_loading_screen(self, message="Loading..."):
+        """Show loading screen with blur effect"""
+        if self.loading_frame:
+            return  # Already showing
+            
+        # Create blur overlay
+        self.blur_overlay = ctk.CTkFrame(
+            self,
+            fg_color=("gray90", "gray10"),
+            bg_color="transparent"
+        )
+        self.blur_overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        
+        # Create loading frame (centered)
+        self.loading_frame = ctk.CTkFrame(
+            self.blur_overlay,
+            width=300,
+            height=200,
+            corner_radius=20,
+            fg_color=("white", "#2b2b2b"),
+            border_width=2,
+            border_color=("gray70", "gray30")
+        )
+        self.loading_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Loading message
+        loading_message = ctk.CTkLabel(
+            self.loading_frame,
+            text=message,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color=("black", "white")
+        )
+        loading_message.pack(pady=20)
+        
+        # GIF animation label
+        self.loading_gif_label = ctk.CTkLabel(
+            self.loading_frame,
+            text="",
+            width=100,
+            height=100
+        )
+        self.loading_gif_label.pack(pady=10)
+        
+        # Progress label
+        self.loading_progress_label = ctk.CTkLabel(
+            self.loading_frame,
+            text="0%",
+            font=ctk.CTkFont(size=14),
+            text_color=("black", "white")
+        )
+        self.loading_progress_label.pack(pady=10)
+        
+        # Start GIF animation
+        self.loading_current_frame = 0
+        self.animate_loading_gif()
+        
+        # Update display
+        self.update()
+    
+    def animate_loading_gif(self):
+        """Animate the loading GIF"""
+        if not self.loading_gif_label or not self.loading_gif_frames:
+            return
+            
+        # Update frame
+        if self.loading_current_frame >= len(self.loading_gif_frames):
+            self.loading_current_frame = 0
+            
+        self.loading_gif_label.configure(image=self.loading_gif_frames[self.loading_current_frame])
+        self.loading_current_frame += 1
+        
+        # Schedule next frame (adjust timing as needed)
+        self.loading_animation_job = self.after(100, self.animate_loading_gif)
+    
+    def update_loading_progress(self, progress, message=None):
+        """Update loading progress (0-100)"""
+        if self.loading_progress_label:
+            self.loading_progress_label.configure(text=f"{progress}%")
+            
+        if message and hasattr(self, 'loading_message_label'):
+            self.loading_message_label.configure(text=message)
+            
+        self.update()
+    
+    def hide_loading_screen(self):
+        """Hide loading screen"""
+        # Stop animation
+        if self.loading_animation_job:
+            self.after_cancel(self.loading_animation_job)
+            self.loading_animation_job = None
+            
+        # Destroy loading elements
+        if self.loading_frame:
+            self.loading_frame.destroy()
+            self.loading_frame = None
+            
+        if self.blur_overlay:
+            self.blur_overlay.destroy()
+            self.blur_overlay = None
+            
+        self.loading_gif_label = None
+        self.loading_progress_label = None
     
     def select_pdf(self):
         """Open file dialog to select PDF file"""
@@ -311,6 +489,7 @@ class PDFtoExcelApp(ctk.CTk):
             self.pdf_path = file_path
             self.pdf_paths = []  # Clear batch list
             self.file_label.configure(text=Path(file_path).name)
+            self.file_count_label.configure(text="1 file")
             self.batch_btn.configure(state="disabled")
             self.apply_all_btn.configure(state="disabled")
             self.status_label.configure(text=f"Selected: {Path(file_path).name}")
@@ -330,30 +509,63 @@ class PDFtoExcelApp(ctk.CTk):
         )
         
         if file_paths:
-            self.pdf_paths = list(file_paths)
-            self.pdf_path = self.pdf_paths[0]  # Load first PDF for viewing
+            self.show_loading_screen("Loading PDFs...")
             
-            self.file_label.configure(text=f"{len(self.pdf_paths)} PDFs selected")
-            self.batch_btn.configure(state="normal")  # Enable batch process
-            self.apply_all_btn.configure(state="normal")  # Enable apply to all
-            self.status_label.configure(text=f"Selected {len(self.pdf_paths)} PDFs for batch processing")
-            self.export_btn.configure(state="disabled")
+            def load_pdfs_thread():
+                try:
+                    self.pdf_paths = list(file_paths)
+                    self.pdf_path = self.pdf_paths[0]  # Load first PDF for viewing
+                    
+                    # Update progress
+                    total_files = len(self.pdf_paths)
+                    for i, pdf_path in enumerate(self.pdf_paths):
+                        progress = int((i / total_files) * 50)  # First 50% for file processing
+                        self.after(0, lambda p=progress: self.update_loading_progress(p))
+                        time.sleep(0.01)  # Small delay to show progress
+                    
+                    # Update UI elements on main thread
+                    def update_ui():
+                        self.file_label.configure(text=f"{len(self.pdf_paths)} PDFs selected")
+                        self.file_count_label.configure(text=f"{len(self.pdf_paths)} files")
+                        self.batch_btn.configure(state="normal")  # Enable batch process
+                        self.apply_all_btn.configure(state="normal")  # Enable apply to all
+                        self.status_label.configure(text=f"Selected {len(self.pdf_paths)} PDFs for batch processing")
+                        self.export_btn.configure(state="disabled")
+                        
+                        # Clear previous extractions
+                        self.extracted_sections = {}
+                        self.file_previews = {}  # Clear previous previews
+                        
+                        # Initialize preview entries for all files
+                        for pdf_path in self.pdf_paths:
+                            file_name = Path(pdf_path).name
+                            # Create empty placeholder - will be filled when selections are applied
+                            self.file_previews[file_name] = pd.DataFrame()
+                        
+                        # Update progress to 100%
+                        self.update_loading_progress(100)
+                        time.sleep(0.2)
+                        
+                        # Update preview dropdown to show all files
+                        self.update_excel_preview()
+                        
+                        # Load first PDF for viewing
+                        self.load_pdf_viewer(self.pdf_paths[0])
+                        
+                        # Hide loading screen
+                        self.hide_loading_screen()
+                    
+                    self.after(0, update_ui)
+                    
+                except Exception as e:
+                    def show_error():
+                        self.hide_loading_screen()
+                        messagebox.showerror("Error", f"Failed to load PDFs:\n{str(e)}")
+                    self.after(0, show_error)
             
-            # Clear previous extractions
-            self.extracted_sections = {}
-            self.file_previews = {}  # Clear previous previews
-            
-            # Initialize preview entries for all files
-            for pdf_path in self.pdf_paths:
-                file_name = Path(pdf_path).name
-                # Create empty placeholder - will be filled when selections are applied
-                self.file_previews[file_name] = pd.DataFrame()
-            
-            # Update preview dropdown to show all files
-            self.update_excel_preview()
-            
-            # Load first PDF for viewing
-            self.load_pdf_viewer(self.pdf_paths[0])
+            # Start thread
+            thread = threading.Thread(target=load_pdfs_thread, daemon=True)
+            thread.start()
     
     def select_folder(self):
         """Open dialog to select folder containing PDF files"""
@@ -362,38 +574,66 @@ class PDFtoExcelApp(ctk.CTk):
         )
         
         if folder_path:
-            # Find all PDF files in the folder
-            folder = Path(folder_path)
-            pdf_files = list(folder.glob("*.pdf"))
+            self.show_loading_screen("Scanning folder...")
             
-            if pdf_files:
-                self.pdf_paths = [str(f) for f in pdf_files]
-                self.pdf_path = self.pdf_paths[0]  # Load first PDF for viewing
-                
-                self.file_label.configure(text=f"{len(self.pdf_paths)} PDFs found in folder")
-                self.batch_btn.configure(state="normal")  # Enable batch process
-                self.apply_all_btn.configure(state="normal")  # Enable apply to all
-                self.status_label.configure(text=f"Found {len(self.pdf_paths)} PDFs in {folder.name}")
-                self.export_btn.configure(state="disabled")
-                
-                # Clear previous extractions
-                self.extracted_sections = {}
-                self.file_previews = {}  # Clear previous previews
-                
-                # Initialize preview entries for all files
-                for pdf_path in self.pdf_paths:
-                    file_name = Path(pdf_path).name
-                    # Create empty placeholder - will be filled when selections are applied
-                    self.file_previews[file_name] = pd.DataFrame()
-                
-                # Update preview dropdown to show all files
-                self.update_excel_preview()
-                
-                # Load first PDF for viewing
-                self.load_pdf_viewer(self.pdf_paths[0])
-            else:
-                messagebox.showwarning("No PDFs Found", "No PDF files found in the selected folder.")
-                self.status_label.configure(text="No PDFs found in folder")
+            def scan_folder_thread():
+                try:
+                    # Find all PDF files in the folder
+                    self.after(0, lambda: self.update_loading_progress(25))
+                    folder = Path(folder_path)
+                    pdf_files = list(folder.glob("*.pdf"))
+                    
+                    self.after(0, lambda: self.update_loading_progress(75))
+                    
+                    if pdf_files:
+                        self.pdf_paths = [str(f) for f in pdf_files]
+                        self.pdf_path = self.pdf_paths[0]  # Load first PDF for viewing
+                        
+                        def update_ui():
+                            self.file_label.configure(text=f"{len(self.pdf_paths)} PDFs found in folder")
+                            self.file_count_label.configure(text=f"{len(self.pdf_paths)} files")
+                            self.batch_btn.configure(state="normal")  # Enable batch process
+                            self.apply_all_btn.configure(state="normal")  # Enable apply to all
+                            self.status_label.configure(text=f"Found {len(self.pdf_paths)} PDFs in {folder.name}")
+                            self.export_btn.configure(state="disabled")
+                            
+                            # Clear previous extractions
+                            self.extracted_sections = {}
+                            self.file_previews = {}  # Clear previous previews
+                            
+                            # Initialize preview entries for all files
+                            for pdf_path in self.pdf_paths:
+                                file_name = Path(pdf_path).name
+                                # Create empty placeholder - will be filled when selections are applied
+                                self.file_previews[file_name] = pd.DataFrame()
+                            
+                            # Update preview dropdown to show all files
+                            self.update_excel_preview()
+                            
+                            # Load first PDF for viewing
+                            self.load_pdf_viewer(self.pdf_paths[0])
+                            
+                            self.update_loading_progress(100)
+                            time.sleep(0.2)
+                            self.hide_loading_screen()
+                        
+                        self.after(0, update_ui)
+                    else:
+                        def show_no_files():
+                            self.hide_loading_screen()
+                            messagebox.showwarning("No PDFs Found", "No PDF files found in the selected folder.")
+                            self.status_label.configure(text="No PDFs found in folder")
+                        self.after(0, show_no_files)
+                        
+                except Exception as e:
+                    def show_error():
+                        self.hide_loading_screen()
+                        messagebox.showerror("Error", f"Failed to scan folder:\n{str(e)}")
+                    self.after(0, show_error)
+            
+            # Start thread
+            thread = threading.Thread(target=scan_folder_thread, daemon=True)
+            thread.start()
     
     def is_header_footer(self, text):
         """Check if text is part of header or footer"""
@@ -528,8 +768,6 @@ class PDFtoExcelApp(ctk.CTk):
             self.current_page = 0
             
             # Enable navigation buttons
-            self.prev_btn.configure(state="normal")
-            self.next_btn.configure(state="normal")
             self.select_table_btn.configure(state="normal")
             self.save_selection_btn.configure(state="normal")
             self.clear_selections_btn.configure(state="normal")
@@ -538,6 +776,21 @@ class PDFtoExcelApp(ctk.CTk):
             # Enable apply button if multiple files selected
             if self.pdf_paths and len(self.pdf_paths) > 1:
                 self.apply_all_btn.configure(state="normal")
+            # Enable sticky overlay nav buttons
+            try:
+                self.sticky_prev.configure(state="normal")
+                self.sticky_next.configure(state="normal")
+            except Exception:
+                pass
+            # Enable clear preview if previews exist with data
+            try:
+                has_data = any((not df.empty) for df in self.file_previews.values()) if self.file_previews else False
+                if has_data:
+                    self.clear_preview_btn.configure(state="normal")
+                else:
+                    self.clear_preview_btn.configure(state="disabled")
+            except Exception:
+                pass
             
             # Display first page
             self.display_pdf_page()
@@ -553,10 +806,10 @@ class PDFtoExcelApp(ctk.CTk):
         try:
             page = self.pdf_document[self.current_page]
             
-            # Update page label
-            self.page_label.configure(
-                text=f"Page {self.current_page + 1} of {len(self.pdf_document)}"
-            )
+            # Update page label and sticky center
+            page_text = f"Page {self.current_page + 1} of {len(self.pdf_document)}"
+            self.page_label.configure(text=page_text)
+            self.sticky_center.configure(text=page_text)
             
             # Render page to image
             zoom = 1.5  # Zoom factor for better quality
@@ -718,59 +971,86 @@ class PDFtoExcelApp(ctk.CTk):
         self.status_label.configure(text=f"✓ Selection marked! Page {self.current_page + 1}: {temp_count} selection(s) (Click 💾 Save to finalize)")
     
     def save_current_page_selections(self):
-        """Save all temporary selections for current page and extract data"""
+        """Save all temporary selections for current page and extract data with formatting"""
         if self.current_page not in self.temp_selections or not self.temp_selections[self.current_page]:
             messagebox.showinfo("Info", "No selections to save on this page!")
             return
         
-        try:
-            # Get current viewing file (could be different from batch files)
-            current_file = self.pdf_path
-            
-            # Extract data from all temp selections on this page
-            with pdfplumber.open(current_file) as pdf:
-                page = pdf.pages[self.current_page]
-                file_name = Path(current_file).name
+        self.show_loading_screen("Saving selections...")
+        
+        def save_selections_thread():
+            try:
+                self.after(0, lambda: self.update_loading_progress(25))
                 
-                for bbox, rect_id in self.temp_selections[self.current_page]:
-                    # Extract table
-                    table = page.crop(bbox).extract_table()
+                # Get current viewing file (could be different from batch files)
+                current_file = self.pdf_path
+                
+                # Extract data from all temp selections on this page
+                with pdfplumber.open(current_file) as pdf:
+                    page = pdf.pages[self.current_page]
+                    file_name = Path(current_file).name
                     
-                    if table:
-                        new_df = pd.DataFrame(table)
+                    selection_count = len(self.temp_selections[self.current_page])
+                    
+                    for idx, (bbox, rect_id) in enumerate(self.temp_selections[self.current_page]):
+                        # Update progress for each selection
+                        progress = 25 + int((idx / selection_count) * 50)
+                        self.after(0, lambda p=progress: self.update_loading_progress(p))
                         
-                        # Append to file preview
-                        if file_name in self.file_previews:
-                            existing_df = self.file_previews[file_name]
-                            # Add separator
-                            num_cols = max(len(existing_df.columns), len(new_df.columns))
-                            separator = pd.DataFrame([[None] * num_cols] * 2)
-                            self.file_previews[file_name] = pd.concat([existing_df, separator, new_df], ignore_index=True)
-                        else:
-                            self.file_previews[file_name] = new_df
+                        # Extract table data
+                        cropped = page.crop(bbox)
+                        table = cropped.extract_table()
+                        
+                        if table:
+                            new_df = pd.DataFrame(table)
+                            
+                            # Append to file preview
+                            if file_name in self.file_previews:
+                                existing_df = self.file_previews[file_name]
+                                # Add separator
+                                num_cols = max(len(existing_df.columns), len(new_df.columns))
+                                separator = pd.DataFrame([[None] * num_cols] * 2)
+                                self.file_previews[file_name] = pd.concat([existing_df, separator, new_df], ignore_index=True)
+                            else:
+                                self.file_previews[file_name] = new_df
+                        
+                        # Change rectangle color to blue (saved) on main thread
+                        self.after(0, lambda rid=rect_id: self.pdf_canvas.itemconfig(rid, outline="blue"))
+                        
+                        # Move to saved selections
+                        if self.current_page not in self.saved_selections:
+                            self.saved_selections[self.current_page] = []
+                        self.saved_selections[self.current_page].append(bbox)
+                
+                # Clear temp selections for this page
+                saved_count = len(self.temp_selections[self.current_page])
+                self.temp_selections[self.current_page] = []
+                
+                def finish_save():
+                    self.update_loading_progress(100)
+                    time.sleep(0.2)
                     
-                    # Change rectangle color to blue (saved)
-                    self.pdf_canvas.itemconfig(rect_id, outline="blue")
+                    # Update preview
+                    self.update_excel_preview()
+                    self.export_btn.configure(state="normal")
                     
-                    # Move to saved selections
-                    if self.current_page not in self.saved_selections:
-                        self.saved_selections[self.current_page] = []
-                    self.saved_selections[self.current_page].append(bbox)
-            
-            # Clear temp selections for this page
-            saved_count = len(self.temp_selections[self.current_page])
-            self.temp_selections[self.current_page] = []
-            
-            # Update preview
-            self.update_excel_preview()
-            self.export_btn.configure(state="normal")
-            
-            total_saved = sum(len(sels) for sels in self.saved_selections.values())
-            self.status_label.configure(text=f"✓ Saved {saved_count} selection(s) from page {self.current_page + 1}! Total saved: {total_saved}")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save selections:\n{str(e)}")
-            print(f"Save error: {e}")
+                    total_saved = sum(len(sels) for sels in self.saved_selections.values())
+                    self.status_label.configure(text=f"✓ Saved {saved_count} selection(s) from page {self.current_page + 1}! Total saved: {total_saved}")
+                    
+                    self.hide_loading_screen()
+                
+                self.after(0, finish_save)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading_screen()
+                    messagebox.showerror("Error", f"Failed to save selections:\n{str(e)}")
+                    print(f"Save error: {e}")
+                self.after(0, show_error)
+        
+        # Start thread
+        thread = threading.Thread(target=save_selections_thread, daemon=True)
+        thread.start()
     
     def undo_last_selection(self):
         """Undo the most recent selection (remove from temp selections)"""
@@ -796,71 +1076,101 @@ class PDFtoExcelApp(ctk.CTk):
     
     def auto_extract_all_tables(self):
         """Automatically extract all tables from all pages with header/footer removal"""
-        if not self.pdf_document:
-            messagebox.showinfo("Info", "No PDF loaded!")
+        # Auto-extract should run across all selected PDFs (batch) or the single loaded PDF
+        files = self.pdf_paths if self.pdf_paths else ([self.pdf_path] if self.pdf_path else [])
+        if not files:
+            messagebox.showinfo("Info", "No PDF(s) loaded!")
             return
+
+        self.show_loading_screen("Auto-extracting tables...")
         
-        try:
-            current_file = self.pdf_path
-            file_name = Path(current_file).name
-            
-            self.status_label.configure(text=f"Auto-extracting tables from {file_name}...")
-            self.update()
-            
-            with pdfplumber.open(current_file) as pdf:
-                all_tables = []
-                
-                for page_num, page in enumerate(pdf.pages):
-                    # Get page dimensions
-                    page_height = page.height
+        def auto_extract_thread():
+            try:
+                header_crop = 90  # Top 80px to remove
+                footer_crop = 90  # Bottom 80px to remove
+                processed = 0
+                total_files = len(files)
+
+                for file_idx, current_file in enumerate(files):
+                    try:
+                        file_name = Path(current_file).name
+                        
+                        # Update progress
+                        progress = int((file_idx / total_files) * 90)
+                        self.after(0, lambda p=progress, fn=file_name: (
+                            self.update_loading_progress(p),
+                            self.status_label.configure(text=f"Auto-extracting tables from {fn}...")
+                        ))
+
+                        with pdfplumber.open(current_file) as pdf:
+                            all_tables = []
+                            
+                            for page in pdf.pages:
+                                page_height = page.height
+                                cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
+                                tables = cropped_page.extract_tables()
+                                
+                                if tables:
+                                    # Get table objects with cell bounding boxes for color detection
+                                    table_settings = {
+                                        "vertical_strategy": "lines",
+                                        "horizontal_strategy": "lines",
+                                        "snap_tolerance": 3,
+                                        "join_tolerance": 3,
+                                    }
+                                    tables_with_cells = cropped_page.find_tables(table_settings)
+                                    
+                                    for table_idx, table in enumerate(tables):
+                                        if table and len(table) > 0:
+                                            all_tables.append(table)
+
+                            if all_tables:
+                                combined_rows = []
+                                for table_idx, table in enumerate(all_tables):
+                                    combined_rows.extend(table)
+                                    if table_idx < len(all_tables) - 1:
+                                        num_cols = len(table[0]) if table else 1
+                                        combined_rows.extend([[None] * num_cols] * 2)
+
+                                df = pd.DataFrame(combined_rows)
+                                self.file_previews[file_name] = df
+                                processed += 1
+                    except Exception as e:
+                        # Continue to next file if one fails
+                        print(f"Auto-extract failed for {current_file}: {e}")
+                        continue
+
+                # Final UI updates
+                def finish_extraction():
+                    self.update_loading_progress(100)
+                    time.sleep(0.3)
                     
-                    # Define crop area (remove top 80px and bottom 80px)
-                    # pdfplumber uses points (72 points = 1 inch)
-                    header_crop = 80  # Top 80px to remove
-                    footer_crop = 80  # Bottom 80px to remove
-                    
-                    # Crop the page to remove header and footer
-                    cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
-                    
-                    # Extract all tables from cropped page
-                    tables = cropped_page.extract_tables()
-                    
-                    if tables:
-                        for table in tables:
-                            if table and len(table) > 0:
-                                all_tables.append(table)
-                
-                if all_tables:
-                    # Combine all tables with separators
-                    combined_rows = []
-                    for table_idx, table in enumerate(all_tables):
-                        combined_rows.extend(table)
-                        # Add separator between tables
-                        if table_idx < len(all_tables) - 1:
-                            num_cols = len(table[0]) if table else 1
-                            combined_rows.extend([[None] * num_cols] * 2)
-                    
-                    # Create DataFrame
-                    df = pd.DataFrame(combined_rows)
-                    
-                    # Store in file previews
-                    self.file_previews[file_name] = df
-                    
-                    # Update preview
-                    self.update_excel_preview()
-                    self.export_btn.configure(state="normal")
-                    
-                    self.status_label.configure(text=f"✓ Auto-extracted {len(all_tables)} tables from {len(pdf.pages)} pages!")
-                    messagebox.showinfo("Success", f"Auto-extracted {len(all_tables)} tables!\n\nHeader/footer areas (80px) removed automatically.\n\nCheck Excel Preview tab.")
-                else:
-                    messagebox.showwarning("No Tables", "No tables found in the PDF.")
-                    self.status_label.configure(text="⚠ No tables found")
-        
-        except Exception as e:
-            messagebox.showerror("Error", f"Auto-extraction failed:\n{str(e)}")
-            self.status_label.configure(text="✗ Auto-extraction failed")
-            import traceback
-            traceback.print_exc()
+                    if processed > 0:
+                        self.update_excel_preview()
+                        self.export_btn.configure(state="normal")
+                        self.clear_preview_btn.configure(state="normal")
+                        self.status_label.configure(text=f"✓ Auto-extracted tables from {processed}/{len(files)} files")
+                        self.hide_loading_screen()
+                        messagebox.showinfo("Success", f"Auto-extracted tables from {processed}/{len(files)} files.\n\nCheck Excel Preview tab.")
+                    else:
+                        self.hide_loading_screen()
+                        messagebox.showwarning("No Tables", "No tables found in the selected PDF(s).")
+                        self.status_label.configure(text="⚠ No tables found")
+
+                self.after(0, finish_extraction)
+
+            except Exception as e:
+                def show_error():
+                    self.hide_loading_screen()
+                    messagebox.showerror("Error", f"Auto-extraction failed:\n{str(e)}")
+                    self.status_label.configure(text="✗ Auto-extraction failed")
+                    import traceback
+                    traceback.print_exc()
+                self.after(0, show_error)
+
+        # Start thread
+        thread = threading.Thread(target=auto_extract_thread, daemon=True)
+        thread.start()
     
     def apply_selections_to_all_files(self):
         """Apply saved selections to all imported PDF files with header/footer removal"""
@@ -872,74 +1182,96 @@ class PDFtoExcelApp(ctk.CTk):
             messagebox.showerror("Error", "No selections saved! Please mark and save selections first.")
             return
         
-        try:
-            self.status_label.configure(text=f"Applying selections to {len(self.pdf_paths)} files...")
-            self.update()
-            
-            processed_count = 0
-            header_crop = 80  # Top 80px to remove
-            footer_crop = 80  # Bottom 80px to remove
-            
-            for pdf_path in self.pdf_paths:
-                file_name = Path(pdf_path).name
+        self.show_loading_screen("Applying selections to all files...")
+        
+        def apply_selections_thread():
+            try:
+                processed_count = 0
+                header_crop = 80  # Top 80px to remove
+                footer_crop = 80  # Bottom 80px to remove
+                total_files = len(self.pdf_paths)
                 
-                try:
-                    with pdfplumber.open(pdf_path) as pdf:
-                        file_tables = []
-                        
-                        # Apply selections from each saved page
-                        for page_num in sorted(self.saved_selections.keys()):
-                            if page_num < len(pdf.pages):
-                                page = pdf.pages[page_num]
-                                page_height = page.height
-                                
-                                # Crop page to remove header/footer
-                                cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
-                                
-                                for bbox in self.saved_selections[page_num]:
-                                    try:
-                                        # Adjust bbox coordinates for the cropped page
-                                        adjusted_bbox = (
-                                            bbox[0],
-                                            max(0, bbox[1] - header_crop),  # Adjust Y coordinate
-                                            bbox[2],
-                                            bbox[3] - header_crop
-                                        )
-                                        
-                                        # Only extract if bbox is within cropped area
-                                        if adjusted_bbox[1] >= 0 and adjusted_bbox[3] <= (page_height - header_crop - footer_crop):
-                                            table = cropped_page.crop(adjusted_bbox).extract_table()
-                                            if table:
-                                                file_tables.append(pd.DataFrame(table))
-                                    except:
-                                        continue
-                        
-                        # Combine all tables for this file
-                        if file_tables:
-                            combined_df = file_tables[0]
-                            for df in file_tables[1:]:
-                                # Add separator
-                                num_cols = max(len(combined_df.columns), len(df.columns))
-                                separator = pd.DataFrame([[None] * num_cols] * 2)
-                                combined_df = pd.concat([combined_df, separator, df], ignore_index=True)
+                for file_idx, pdf_path in enumerate(self.pdf_paths):
+                    file_name = Path(pdf_path).name
+                    
+                    # Update progress
+                    progress = int((file_idx / total_files) * 90)
+                    self.after(0, lambda p=progress, fn=file_name: (
+                        self.update_loading_progress(p),
+                        self.status_label.configure(text=f"Applying selections to {fn}...")
+                    ))
+                    
+                    try:
+                        with pdfplumber.open(pdf_path) as pdf:
+                            file_tables = []
                             
-                            self.file_previews[file_name] = combined_df
-                            processed_count += 1
+                            # Apply selections from each saved page
+                            for page_num in sorted(self.saved_selections.keys()):
+                                if page_num < len(pdf.pages):
+                                    page = pdf.pages[page_num]
+                                    page_height = page.height
+                                    
+                                    # Crop page to remove header/footer
+                                    cropped_page = page.crop((0, header_crop, page.width, page_height - footer_crop))
+                                    
+                                    for bbox in self.saved_selections[page_num]:
+                                        try:
+                                            # Adjust bbox coordinates for the cropped page
+                                            adjusted_bbox = (
+                                                bbox[0],
+                                                max(0, bbox[1] - header_crop),  # Adjust Y coordinate
+                                                bbox[2],
+                                                bbox[3] - header_crop
+                                            )
+                                            
+                                            # Only extract if bbox is within cropped area
+                                            if adjusted_bbox[1] >= 0 and adjusted_bbox[3] <= (page_height - header_crop - footer_crop):
+                                                table = cropped_page.crop(adjusted_bbox).extract_table()
+                                                if table:
+                                                    file_tables.append(pd.DataFrame(table))
+                                        except:
+                                            continue
+                            
+                            # Combine all tables for this file
+                            if file_tables:
+                                combined_df = file_tables[0]
+                                for df in file_tables[1:]:
+                                    # Add separator
+                                    num_cols = max(len(combined_df.columns), len(df.columns))
+                                    separator = pd.DataFrame([[None] * num_cols] * 2)
+                                    combined_df = pd.concat([combined_df, separator, df], ignore_index=True)
+                                
+                                self.file_previews[file_name] = combined_df
+                                processed_count += 1
+                    
+                    except Exception as e:
+                        print(f"Error processing {file_name}: {e}")
+                        continue
                 
-                except Exception as e:
-                    print(f"Error processing {file_name}: {e}")
-                    continue
-            
-            # Update preview
-            self.update_excel_preview()
-            self.export_btn.configure(state="normal")
-            
-            self.status_label.configure(text=f"✓ Applied to {processed_count} files with header/footer removed!")
-            messagebox.showinfo("Success", f"Successfully applied selections to {processed_count} files!\n\nHeader/footer (80px) removed automatically.\n\nCheck the Excel Preview tab.")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to apply selections:\n{str(e)}")
-            print(f"Apply error: {e}")
+                def finish_apply():
+                    self.update_loading_progress(100)
+                    time.sleep(0.3)
+                    
+                    # Update preview
+                    self.update_excel_preview()
+                    self.export_btn.configure(state="normal")
+                    
+                    self.status_label.configure(text=f"✓ Applied to {processed_count} files with header/footer removed!")
+                    self.hide_loading_screen()
+                    messagebox.showinfo("Success", f"Successfully applied selections to {processed_count} files!\n\nHeader/footer (80px) removed automatically.\n\nCheck the Excel Preview tab.")
+                
+                self.after(0, finish_apply)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading_screen()
+                    messagebox.showerror("Error", f"Failed to apply selections:\n{str(e)}")
+                    print(f"Apply error: {e}")
+                self.after(0, show_error)
+        
+        # Start thread
+        thread = threading.Thread(target=apply_selections_thread, daemon=True)
+        thread.start()
     
     def redraw_selections(self):
         """Redraw saved and temporary selections for the current page only"""
@@ -1046,8 +1378,13 @@ class PDFtoExcelApp(ctk.CTk):
         """Update Excel preview tab with extracted data"""
         if not self.file_previews:
             self.sheet_selector.configure(values=["No data available"], state="disabled")
-            self.excel_display.delete("1.0", "end")
-            self.excel_display.insert("1.0", "No data extracted yet. Mark areas on PDF to preview.")
+            # Clear treeview
+            for item in self.excel_display.get_children():
+                self.excel_display.delete(item)
+            try:
+                self.clear_preview_btn.configure(state="disabled")
+            except Exception:
+                pass
             return
         
         # Show list of files
@@ -1057,34 +1394,131 @@ class PDFtoExcelApp(ctk.CTk):
         
         # Display first file
         self.display_file_preview(file_names[0])
+        # Enable Clear Preview if any file has data
+        try:
+            has_data = any((not df.empty) for df in self.file_previews.values())
+            if has_data:
+                self.clear_preview_btn.configure(state="normal")
+            else:
+                self.clear_preview_btn.configure(state="disabled")
+        except Exception:
+            pass
     
     def on_file_selected(self, file_name):
         """Handle file selection change"""
         self.display_file_preview(file_name)
+
+    def clear_all_previews(self):
+        """Clear all Excel preview data (reset preview dropdown and display)"""
+        self.show_loading_screen("Clearing previews...")
+        
+        def clear_previews_thread():
+            try:
+                self.after(0, lambda: self.update_loading_progress(25))
+                
+                # Clear file previews
+                self.file_previews = {}
+                
+                self.after(0, lambda: self.update_loading_progress(50))
+                
+                def update_ui():
+                    # Reset selector and display
+                    try:
+                        self.sheet_selector.configure(values=["No data available"], state="disabled")
+                    except Exception:
+                        pass
+                    
+                    self.update_loading_progress(75)
+                    
+                    # Clear treeview
+                    for item in self.excel_display.get_children():
+                        self.excel_display.delete(item)
+                    
+                    # Disable export and clear-preview button
+                    try:
+                        self.export_btn.configure(state="disabled")
+                        self.clear_preview_btn.configure(state="disabled")
+                    except Exception:
+                        pass
+                    
+                    self.update_loading_progress(100)
+                    time.sleep(0.2)
+                    
+                    self.status_label.configure(text="Excel preview cleared")
+                    self.hide_loading_screen()
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading_screen()
+                    messagebox.showerror("Error", f"Failed to clear previews:\n{str(e)}")
+                self.after(0, show_error)
+        
+        # Start thread
+        thread = threading.Thread(target=clear_previews_thread, daemon=True)
+        thread.start()
     
     def display_file_preview(self, file_name):
-        """Display selected file preview data"""
+        """Display selected file preview data in Excel-like grid"""
         if file_name not in self.file_previews:
             return
         
         df = self.file_previews[file_name]
         
-        self.excel_display.delete("1.0", "end")
-        self.excel_display.insert("1.0", f"File: {file_name}\n")
-        self.excel_display.insert("end", f"{'='*100}\n")
+        # Clear existing treeview
+        for item in self.excel_display.get_children():
+            self.excel_display.delete(item)
+        
+        # Clear existing columns
+        self.excel_display["columns"] = []
         
         # Check if dataframe is empty
         if df.empty:
-            self.excel_display.insert("end", "No data extracted yet.\n\n")
-            self.excel_display.insert("end", "To extract data:\n")
-            self.excel_display.insert("end", "1. Mark selection areas on PDF\n")
-            self.excel_display.insert("end", "2. Click 💾 Save Selections\n")
-            self.excel_display.insert("end", "3. Click 📋 Apply to All Files to process all PDFs\n")
+            # Show message in treeview
+            self.excel_display["columns"] = ["Message"]
+            self.excel_display.heading("#0", text="")
+            self.excel_display.column("#0", width=0, stretch=False)
+            self.excel_display.heading("Message", text=f"File: {file_name}")
+            self.excel_display.column("Message", width=800, anchor="w")
+            
+            self.excel_display.insert("", "end", values=("No data extracted yet.",))
+            self.excel_display.insert("", "end", values=("",))
+            self.excel_display.insert("", "end", values=("To extract data:",))
+            self.excel_display.insert("", "end", values=("1. Mark selection areas on PDF",))
+            self.excel_display.insert("", "end", values=("2. Click 💾 Save Selections",))
+            self.excel_display.insert("", "end", values=("3. Click 📋 Apply to All Files to process all PDFs",))
         else:
-            self.excel_display.insert("end", f"Rows: {len(df)} | Columns: {len(df.columns)}\n")
-            self.excel_display.insert("end", f"{'='*100}\n\n")
-            # Display full dataframe
-            self.excel_display.insert("end", df.to_string())
+            # Set up columns - use Excel-style letters (A, B, C, etc.)
+            num_cols = len(df.columns)
+            col_letters = [self.excel_column_letter(i) for i in range(num_cols)]
+            
+            self.excel_display["columns"] = col_letters
+            
+            # Hide the first column (tree column)
+            self.excel_display.heading("#0", text="Row")
+            self.excel_display.column("#0", width=50, anchor="center")
+            
+            # Configure column headers
+            for i, col_letter in enumerate(col_letters):
+                self.excel_display.heading(col_letter, text=col_letter)
+                self.excel_display.column(col_letter, width=100, anchor="center")
+            
+            # Add data rows
+            for idx, row in df.iterrows():
+                # Convert row to list and replace None/NaN with empty string
+                row_values = [str(val) if pd.notna(val) and val is not None else "" for val in row]
+                self.excel_display.insert("", "end", text=str(idx + 1), values=row_values)
+    
+    def excel_column_letter(self, n):
+        """Convert column number to Excel-style letter (0->A, 1->B, 25->Z, 26->AA, etc.)"""
+        result = ""
+        while n >= 0:
+            result = chr(n % 26 + 65) + result
+            n = n // 26 - 1
+            if n < 0:
+                break
+        return result
     
     def extract_data(self):
         """Extract ALL tables from PDF directly - simple and accurate"""
@@ -1295,7 +1729,7 @@ class PDFtoExcelApp(ctk.CTk):
             traceback.print_exc()
     
     def export_to_excel(self):
-        """Export all extracted tables to Excel with borders and merged cells"""
+        """Export all extracted tables to Excel with thick borders, bold detection, and merged headers"""
         if not self.file_previews:
             messagebox.showerror("Error", "No data to export! Please mark areas first.")
             return
@@ -1310,7 +1744,7 @@ class PDFtoExcelApp(ctk.CTk):
                 self.status_label.configure(text="Exporting to Excel...")
                 self.update()
                 
-                from openpyxl.styles import Border, Side, Alignment
+                from openpyxl.styles import Border, Side, Alignment, Font, PatternFill
                 from openpyxl.utils import get_column_letter
                 
                 output_path = Path(save_folder)
@@ -1320,51 +1754,434 @@ class PDFtoExcelApp(ctk.CTk):
                     excel_name = Path(file_name).stem + ".xlsx"
                     excel_path = output_path / excel_name
                     
+                    # Clean dataframe before export - PRESERVE TABLE STRUCTURE
+                    df_cleaned = df.copy()
+                    
+                    # Step 1: Reset column names to numeric indices first
+                    df_cleaned.columns = range(len(df_cleaned.columns))
+                    
+                    # Step 2: DETECT TABLE BOUNDARIES with improved logic for better detection
+                    table_boundaries = []
+                    current_table = None
+                    empty_row_count = 0
+                    max_empty_gap = 3  # Allow up to 3 empty rows within a table
+                    
+                    for row_idx in range(len(df_cleaned)):
+                        row = df_cleaned.iloc[row_idx]
+                        row_has_data = False
+                        first_col = None
+                        last_col = None
+                        
+                        for col_idx in range(len(row)):
+                            cell = row.iloc[col_idx]
+                            if pd.notna(cell) and str(cell).strip():
+                                row_has_data = True
+                                if first_col is None:
+                                    first_col = col_idx
+                                last_col = col_idx
+                        
+                        if row_has_data:
+                            empty_row_count = 0  # Reset empty row counter
+                            
+                            if current_table is None:
+                                current_table = {
+                                    'start_row': row_idx,
+                                    'end_row': row_idx,
+                                    'start_col': first_col,
+                                    'end_col': last_col
+                                }
+                            else:
+                                current_table['end_row'] = row_idx
+                                current_table['start_col'] = min(current_table['start_col'], first_col)
+                                current_table['end_col'] = max(current_table['end_col'], last_col)
+                        else:
+                            empty_row_count += 1
+                            
+                            # Only end the table if we have too many consecutive empty rows
+                            if current_table is not None and empty_row_count > max_empty_gap:
+                                table_boundaries.append(current_table)
+                                current_table = None
+                                empty_row_count = 0
+                    
+                    if current_table is not None:
+                        table_boundaries.append(current_table)
+                    
+                    # Step 3: Smart cleaning - preserve table structure, clean outside tables
+                    def is_inside_table(row_idx, col_idx):
+                        """Check if cell is inside any detected table boundary"""
+                        for table in table_boundaries:
+                            if (table['start_row'] <= row_idx <= table['end_row'] and 
+                                table['start_col'] <= col_idx <= table['end_col']):
+                                return True
+                        return False
+                    
+                    # Step 4: First remove completely empty columns outside tables
+                    cols_to_keep = []
+                    for col_idx in range(len(df_cleaned.columns)):
+                        col_data = df_cleaned.iloc[:, col_idx]
+                        
+                        # Check if column intersects with any table
+                        col_in_table = any(table['start_col'] <= col_idx <= table['end_col'] for table in table_boundaries)
+                        
+                        if col_in_table:
+                            # Always keep columns that are part of tables
+                            cols_to_keep.append(col_idx)
+                        else:
+                            # For columns outside tables, check if they have any data
+                            has_data = col_data.notna().any() and any(str(cell).strip() != '' for cell in col_data if pd.notna(cell))
+                            if has_data:
+                                cols_to_keep.append(col_idx)
+                    
+                    # Create column mapping for updating table boundaries
+                    old_to_new_col = {}
+                    for new_idx, old_idx in enumerate(cols_to_keep):
+                        old_to_new_col[old_idx] = new_idx
+                    
+                    if cols_to_keep:
+                        df_cleaned = df_cleaned.iloc[:, cols_to_keep]
+                        df_cleaned.columns = range(len(df_cleaned.columns))  # Reset to 0, 1, 2, ...
+                        
+                        # Update table boundaries after column removal
+                        updated_table_boundaries = []
+                        for table in table_boundaries:
+                            # Map old column indices to new ones
+                            new_start_col = None
+                            new_end_col = None
+                            
+                            for old_col in range(table['start_col'], table['end_col'] + 1):
+                                if old_col in old_to_new_col:
+                                    new_col = old_to_new_col[old_col]
+                                    if new_start_col is None:
+                                        new_start_col = new_col
+                                    new_end_col = new_col
+                            
+                            if new_start_col is not None and new_end_col is not None:
+                                updated_table_boundaries.append({
+                                    'start_row': table['start_row'],
+                                    'end_row': table['end_row'],
+                                    'start_col': new_start_col,
+                                    'end_col': new_end_col
+                                })
+                        
+                        table_boundaries = updated_table_boundaries
+                    
+                    # Step 5: Improved table-unit shifting with fallback for missed tables
+                    # Process each table as a unit to maintain internal spacing and alignment
+                    processed_tables = set()
+                    
+                    for idx in range(len(df_cleaned)):
+                        row = df_cleaned.iloc[idx]
+                        
+                        # Skip completely empty rows
+                        if row.isna().all() or all(str(cell).strip() == '' for cell in row if pd.notna(cell)):
+                            continue
+                        
+                        # Check if this row is part of any table
+                        current_table = None
+                        for table in table_boundaries:
+                            if table['start_row'] <= idx <= table['end_row']:
+                                current_table = table
+                                break
+                        
+                        if current_table and id(current_table) not in processed_tables:
+                            # Process entire table as a unit
+                            processed_tables.add(id(current_table))
+                            
+                            # Find the minimum leading empty columns across ALL data rows in this table
+                            min_leading_empty = float('inf')
+                            table_has_data = False
+                            
+                            for table_row_idx in range(current_table['start_row'], current_table['end_row'] + 1):
+                                table_row = df_cleaned.iloc[table_row_idx]
+                                
+                                # Skip empty rows in the table
+                                if table_row.isna().all() or all(str(cell).strip() == '' for cell in table_row if pd.notna(cell)):
+                                    continue
+                                
+                                # Count leading empty cells in this row
+                                leading_empty = 0
+                                for cell in table_row:
+                                    if pd.isna(cell) or str(cell).strip() == '':
+                                        leading_empty += 1
+                                    else:
+                                        break
+                                
+                                # Only consider rows that have actual data
+                                if leading_empty < len(table_row):
+                                    min_leading_empty = min(min_leading_empty, leading_empty)
+                                    table_has_data = True
+                            
+                            # If we found consistent leading empty space, shift the entire table
+                            if table_has_data and min_leading_empty > 0 and min_leading_empty != float('inf'):
+                                for table_row_idx in range(current_table['start_row'], current_table['end_row'] + 1):
+                                    table_row = df_cleaned.iloc[table_row_idx]
+                                    
+                                    # Shift ALL rows in the table by the same amount (preserves internal structure)
+                                    row_values = table_row.tolist()
+                                    shifted = row_values[min_leading_empty:] + [None] * min_leading_empty
+                                    df_cleaned.iloc[table_row_idx] = shifted
+                        
+                        elif not current_table:
+                            # Rows OUTSIDE tables - shift individually
+                            leading_empty = 0
+                            for cell in row:
+                                if pd.isna(cell) or str(cell).strip() == '':
+                                    leading_empty += 1
+                                else:
+                                    break
+                            
+                            if leading_empty > 0 and leading_empty < len(row):
+                                row_values = row.tolist()
+                                shifted = row_values[leading_empty:] + [None] * leading_empty
+                                df_cleaned.iloc[idx] = shifted
+                    
+                    # Step 5.5: Additional pass for any remaining rows with leading empty space
+                    # This catches any rows that might have been missed by table detection
+                    # BUT only shift rows that are OUTSIDE detected tables
+                    for idx in range(len(df_cleaned)):
+                        row = df_cleaned.iloc[idx]
+                        
+                        # Skip completely empty rows
+                        if row.isna().all() or all(str(cell).strip() == '' for cell in row if pd.notna(cell)):
+                            continue
+                        
+                        # Check if this row is inside any detected table
+                        row_in_table = False
+                        for table in table_boundaries:
+                            if table['start_row'] <= idx <= table['end_row']:
+                                row_in_table = True
+                                break
+                        
+                        # Only shift if row is OUTSIDE tables
+                        if not row_in_table:
+                            # Count leading empty cells
+                            leading_empty = 0
+                            for cell in row:
+                                if pd.isna(cell) or str(cell).strip() == '':
+                                    leading_empty += 1
+                                else:
+                                    break
+                            
+                            # If row still has leading empty space, shift it
+                            if leading_empty > 0 and leading_empty < len(row):
+                                row_values = row.tolist()
+                                shifted = row_values[leading_empty:] + [None] * leading_empty
+                                df_cleaned.iloc[idx] = shifted
+                    
+                    # Step 6: Remove excessive empty rows (keep max 2 consecutive empty rows as separators)
+                    rows_to_keep = []
+                    consecutive_empty = 0
+                    
+                    for idx in range(len(df_cleaned)):
+                        row = df_cleaned.iloc[idx]
+                        is_empty = row.isna().all() or all(str(cell).strip() == '' for cell in row if pd.notna(cell))
+                        
+                        # Check if row contains header/footer text like "COMMERCIAL CONFIDENTIAL"
+                        is_header_footer_row = False
+                        for cell in row:
+                            if pd.notna(cell):
+                                cell_text = str(cell).strip().lower()
+                                if 'commercial confidential' in cell_text:
+                                    is_header_footer_row = True
+                                    break
+                        
+                        if is_header_footer_row:
+                            # Skip this row entirely
+                            continue
+                        elif is_empty:
+                            consecutive_empty += 1
+                            # Keep only first 2 consecutive empty rows
+                            if consecutive_empty <= 2:
+                                rows_to_keep.append(idx)
+                        else:
+                            consecutive_empty = 0
+                            rows_to_keep.append(idx)
+                    
+                    # Apply the filter
+                    if rows_to_keep:
+                        df_cleaned = df_cleaned.iloc[rows_to_keep].reset_index(drop=True)
+                    
                     # Write to Excel
                     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name="Extracted Data", index=False, header=False)
+                        df_cleaned.to_excel(writer, sheet_name="Extracted Data", index=False, header=False)
                         
                         # Get worksheet
                         worksheet = writer.sheets["Extracted Data"]
                         
-                        # Define border style
-                        thin_border = Border(
-                            left=Side(style='thin'),
-                            right=Side(style='thin'),
-                            top=Side(style='thin'),
-                            bottom=Side(style='thin')
+                        # Define thick border style for tables
+                        thick_border = Border(
+                            left=Side(style='medium'),
+                            right=Side(style='medium'),
+                            top=Side(style='medium'),
+                            bottom=Side(style='medium')
                         )
                         
-                        # Apply borders and detect merged cells
-                        for row_idx, row in enumerate(worksheet.iter_rows(min_row=1, max_row=len(df)), 1):
-                            for col_idx, cell in enumerate(row, 1):
-                                # Apply border
-                                cell.border = thin_border
-                                
-                                # Center align
-                                cell.alignment = Alignment(horizontal='center', vertical='center')
-                                
-                                # Detect if cell should be merged (same value as previous cell in row)
-                                if col_idx > 1:
-                                    prev_cell = worksheet.cell(row_idx, col_idx - 1)
-                                    if cell.value and prev_cell.value and str(cell.value).strip() == str(prev_cell.value).strip():
-                                        # Try to merge with previous cell
-                                        try:
-                                            # Find the start of merge range
-                                            merge_start = col_idx - 1
-                                            while merge_start > 1:
-                                                check_cell = worksheet.cell(row_idx, merge_start - 1)
-                                                if check_cell.value and str(check_cell.value).strip() == str(cell.value).strip():
-                                                    merge_start -= 1
-                                                else:
-                                                    break
+                        # Detect table boundaries (non-empty cell regions)
+                        table_ranges = []
+                        current_table = None
+                        
+                        for row_idx in range(1, len(df_cleaned) + 1):
+                            row_has_data = False
+                            first_col = None
+                            last_col = None
+                            
+                            for col_idx in range(1, len(df_cleaned.columns) + 1):
+                                cell = worksheet.cell(row_idx, col_idx)
+                                if cell.value is not None and str(cell.value).strip():
+                                    row_has_data = True
+                                    if first_col is None:
+                                        first_col = col_idx
+                                    last_col = col_idx
+                            
+                            if row_has_data:
+                                if current_table is None:
+                                    current_table = {
+                                        'start_row': row_idx,
+                                        'end_row': row_idx,
+                                        'start_col': first_col,
+                                        'end_col': last_col
+                                    }
+                                else:
+                                    current_table['end_row'] = row_idx
+                                    current_table['start_col'] = min(current_table['start_col'], first_col)
+                                    current_table['end_col'] = max(current_table['end_col'], last_col)
+                            else:
+                                if current_table is not None:
+                                    table_ranges.append(current_table)
+                                    current_table = None
+                        
+                        if current_table is not None:
+                            table_ranges.append(current_table)
+                        
+                        # Apply formatting to each table
+                        for table_idx, table_range in enumerate(table_ranges):
+                            start_row = table_range['start_row']
+                            end_row = table_range['end_row']
+                            start_col = table_range['start_col']
+                            end_col = table_range['end_col']
+                            
+                            # First pass: Detect Risk Grade row and mark the score cell
+                            risk_grade_row = None
+                            risk_grade_score_col = None
+                            
+                            for row_idx in range(start_row, end_row + 1):
+                                for col_idx in range(start_col, end_col + 1):
+                                    cell = worksheet.cell(row_idx, col_idx)
+                                    cell_value = str(cell.value).strip() if cell.value else ""
+                                    
+                                    # Check if this row contains "Risk Grade"
+                                    if "Risk Grade" in cell_value:
+                                        risk_grade_row = row_idx
+                                        
+                                        # Find the cell with just a number (1-10) in this row
+                                        for score_col in range(start_col, end_col + 1):
+                                            score_cell = worksheet.cell(row_idx, score_col)
+                                            score_value = str(score_cell.value).strip() if score_cell.value else ""
                                             
-                                            # Check if not already merged
-                                            range_str = f"{get_column_letter(merge_start)}{row_idx}:{get_column_letter(col_idx)}{row_idx}"
+                                            # Check if this is a single digit number (the actual score)
+                                            if score_value.isdigit() and 1 <= int(score_value) <= 10:
+                                                risk_grade_score_col = score_col
+                                                break
+                                        break
+                                if risk_grade_row:
+                                    break
+                            
+                            # Second pass: Apply thick borders and formatting to table cells
+                            for row_idx in range(start_row, end_row + 1):
+                                for col_idx in range(start_col, end_col + 1):
+                                    cell = worksheet.cell(row_idx, col_idx)
+                                    
+                                    # Apply thick border only to table cells
+                                    cell.border = thick_border
+                                    
+                                    # Center align
+                                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                                    
+                                    # Check if this is the Risk Grade score cell - make it bold with yellow background
+                                    is_risk_score_cell = (row_idx == risk_grade_row and col_idx == risk_grade_score_col)
+                                    
+                                    if is_risk_score_cell:
+                                        # Make the risk grade number stand out
+                                        cell.font = Font(bold=True, size=14, color="000000")  # Bold, larger, black
+                                        cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Yellow background
+                            
+                            # Smart merging: Merge horizontally (same row) when cells have identical values
+                            for row_idx in range(start_row, end_row + 1):
+                                col = start_col
+                                while col <= end_col:
+                                    cell = worksheet.cell(row_idx, col)
+                                    cell_value = cell.value
+                                    
+                                    # Skip empty cells
+                                    if cell_value is None or str(cell_value).strip() == "":
+                                        col += 1
+                                        continue
+                                    
+                                    # Find consecutive cells with same value in this row
+                                    merge_end = col
+                                    while merge_end < end_col:
+                                        next_cell = worksheet.cell(row_idx, merge_end + 1)
+                                        next_value = next_cell.value
+                                        
+                                        # Check if values match (handling None and whitespace)
+                                        if next_value is not None and str(cell_value).strip() == str(next_value).strip():
+                                            merge_end += 1
+                                        else:
+                                            break
+                                    
+                                    # Merge if more than one cell has the same value
+                                    if merge_end > col:
+                                        try:
+                                            range_str = f"{get_column_letter(col)}{row_idx}:{get_column_letter(merge_end)}{row_idx}"
                                             if range_str not in [str(m) for m in worksheet.merged_cells]:
                                                 worksheet.merge_cells(range_str)
-                                        except:
-                                            pass
+                                                # Re-apply formatting to merged cell
+                                                merged_cell = worksheet.cell(row_idx, col)
+                                                merged_cell.border = thick_border
+                                                merged_cell.alignment = Alignment(horizontal='center', vertical='center')
+                                        except Exception as e:
+                                            print(f"Merge error: {e}")
+                                    
+                                    col = merge_end + 1
+                            
+                            # Vertical merging: Merge down (same column) when cells have identical values
+                            for col_idx in range(start_col, end_col + 1):
+                                row = start_row
+                                while row <= end_row:
+                                    cell = worksheet.cell(row, col_idx)
+                                    cell_value = cell.value
+                                    
+                                    # Skip empty cells
+                                    if cell_value is None or str(cell_value).strip() == "":
+                                        row += 1
+                                        continue
+                                    
+                                    # Find consecutive cells with same value in this column
+                                    merge_end_row = row
+                                    while merge_end_row < end_row:
+                                        next_cell = worksheet.cell(merge_end_row + 1, col_idx)
+                                        next_value = next_cell.value
+                                        
+                                        # Check if values match
+                                        if next_value is not None and str(cell_value).strip() == str(next_value).strip():
+                                            merge_end_row += 1
+                                        else:
+                                            break
+                                    
+                                    # Merge if more than one cell has the same value (at least 2 rows)
+                                    if merge_end_row > row:
+                                        try:
+                                            range_str = f"{get_column_letter(col_idx)}{row}:{get_column_letter(col_idx)}{merge_end_row}"
+                                            if range_str not in [str(m) for m in worksheet.merged_cells]:
+                                                worksheet.merge_cells(range_str)
+                                                # Re-apply formatting to merged cell
+                                                merged_cell = worksheet.cell(row, col_idx)
+                                                merged_cell.border = thick_border
+                                                merged_cell.alignment = Alignment(horizontal='center', vertical='center')
+                                        except Exception as e:
+                                            print(f"Vertical merge error: {e}")
+                                    
+                                    row = merge_end_row + 1
                         
                         # Auto-adjust column widths
                         for column in worksheet.columns:
@@ -1394,3 +2211,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
