@@ -1,14 +1,17 @@
 import customtkinter as ctk
 from tkinter import filedialog, messagebox, ttk
+import tkinter as tk
 import pandas as pd
 import pdfplumber
 from pathlib import Path
+from datetime import datetime
 import re
 import fitz  # PyMuPDF
 from PIL import Image, ImageTk, ImageFilter
 import io
 import threading
 import time
+import numpy as np
 
 class PDFtoExcelApp(ctk.CTk):
     def __init__(self):
@@ -40,6 +43,10 @@ class PDFtoExcelApp(ctk.CTk):
         self.selection_rectangles = []  # Visual rectangles on canvas
         self.temp_selections = {}  # Temporary selections before saving: {page_num: [(bbox, rect_id), ...]}
         self.selection_history = []  # History for undo: [(page_num, bbox, rect_id), ...]
+        self.file_risk_grades = {}  # Store risk grades per file: {filename: risk_grade}
+        
+        # Database variables
+        self.database_df = pd.DataFrame()  # Combined database DataFrame
         
         # Loading screen variables
         self.loading_frame = None
@@ -329,13 +336,77 @@ class PDFtoExcelApp(ctk.CTk):
             excel_display_frame,
             yscrollcommand=tree_scroll_y.set,
             xscrollcommand=tree_scroll_x.set,
-            show="tree headings",
+            show="headings",
             selectmode="extended"
         )
         self.excel_display.pack(pady=10, padx=10, fill="both", expand=True)
         
         tree_scroll_y.configure(command=self.excel_display.yview)
         tree_scroll_x.configure(command=self.excel_display.xview)
+        
+        # Tab 3: Database Viewer
+        self.tab_view.add("🗄️ Database Viewer")
+        db_tab = self.tab_view.tab("🗄️ Database Viewer")
+        
+        # Database navigation frame
+        db_nav_frame = ctk.CTkFrame(db_tab)
+        db_nav_frame.pack(pady=5, padx=10, fill="x")
+        
+        ctk.CTkLabel(
+            db_nav_frame,
+            text="Database Builder - All extracted files will be combined",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(side="left", padx=10)
+        
+        # Button frame for database actions
+        db_btn_frame = ctk.CTkFrame(db_nav_frame)
+        db_btn_frame.pack(side="right", padx=10)
+        
+        self.db_build_btn = ctk.CTkButton(
+            db_btn_frame,
+            text="🔨 Build Database",
+            command=self.build_database,
+            width=140,
+            state="disabled",
+            fg_color="#9333ea",
+            hover_color="#7e22ce"
+        )
+        self.db_build_btn.pack(pady=4)
+        
+        self.db_export_btn = ctk.CTkButton(
+            db_btn_frame,
+            text="💾 Export Database",
+            command=self.export_database,
+            width=140,
+            state="disabled",
+            fg_color="green",
+            hover_color="darkgreen"
+        )
+        self.db_export_btn.pack(pady=4)
+        
+
+        
+        # Database preview area (treeview)
+        db_preview_frame = ctk.CTkFrame(db_tab)
+        db_preview_frame.pack(pady=5, padx=10, fill="both", expand=True)
+        
+        db_scroll_y = ctk.CTkScrollbar(db_preview_frame, orientation="vertical")
+        db_scroll_y.pack(side="right", fill="y")
+        
+        db_scroll_x = ctk.CTkScrollbar(db_preview_frame, orientation="horizontal")
+        db_scroll_x.pack(side="bottom", fill="x")
+        
+        self.db_tree = ttk.Treeview(
+            db_preview_frame,
+            yscrollcommand=db_scroll_y.set,
+            xscrollcommand=db_scroll_x.set,
+            show="headings",
+            selectmode="extended"
+        )
+        self.db_tree.pack(pady=10, padx=10, fill="both", expand=True)
+        
+        db_scroll_y.configure(command=self.db_tree.yview)
+        db_scroll_x.configure(command=self.db_tree.xview)
         
         # Status bar
         self.status_label = ctk.CTkLabel(
@@ -348,6 +419,83 @@ class PDFtoExcelApp(ctk.CTk):
         
         # Setup loading screen
         self.setup_loading_screen()
+    
+    def extract_risk_grade_from_score(self, score):
+        """Convert i-SCORE to Risk Grade based on the official ranges"""
+        if score < 360:
+            return 1
+        elif 361 <= score <= 420:
+            return 2
+        elif 421 <= score <= 460:
+            return 3
+        elif 461 <= score <= 540:
+            return 4
+        elif 541 <= score <= 580:
+            return 5
+        elif 581 <= score <= 620:
+            return 6
+        elif 621 <= score <= 660:
+            return 7
+        elif 661 <= score <= 700:
+            return 8
+        elif 701 <= score <= 740:
+            return 9
+        elif score > 741:
+            return 10
+        else:
+            return None
+    
+    def extract_iscore_and_risk_grade(self, pdf_path):
+        """Extract i-SCORE and calculate risk grade from PDF"""
+        try:
+            doc = fitz.open(pdf_path)
+            
+            for page_num, page in enumerate(doc):
+                # Extract text to find i-SCORE
+                text_blocks = page.get_text("dict")
+                
+                for block in text_blocks["blocks"]:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            if "spans" in line:
+                                for span in line["spans"]:
+                                    text = span["text"].strip()
+                                    
+                                    # Look for i-SCORE pattern
+                                    if "i-SCORE" in text or "i-score" in text.lower():
+                                        # Get the bbox area around i-SCORE
+                                        bbox = span["bbox"]
+                                        search_rect = fitz.Rect(
+                                            bbox[0] - 50, bbox[1] - 20,
+                                            bbox[0] + 200, bbox[1] + 50
+                                        )
+                                        
+                                        # Extract text in this region
+                                        region_text = page.get_textbox(search_rect)
+                                        
+                                        # Find the score number
+                                        score_match = re.search(r'i-SCORE[^\d]*(\d{3,4})', region_text, re.IGNORECASE)
+                                        if score_match:
+                                            score = int(score_match.group(1))
+                                            risk_grade = self.extract_risk_grade_from_score(score)
+                                            doc.close()
+                                            return score, risk_grade
+                                        
+                                        # Alternative pattern - look for numbers near i-SCORE
+                                        numbers = re.findall(r'\b(\d{3,4})\b', region_text)
+                                        for num_str in numbers:
+                                            num = int(num_str)
+                                            if 300 <= num <= 900:  # Valid score range
+                                                risk_grade = self.extract_risk_grade_from_score(num)
+                                                doc.close()
+                                                return num, risk_grade
+            
+            doc.close()
+            return None, None
+            
+        except Exception as e:
+            print(f"Error extracting risk grade from {pdf_path}: {e}")
+            return None, None
     
     def setup_loading_screen(self):
         """Setup the loading screen with GIF animation and blur effect"""
@@ -985,10 +1133,16 @@ class PDFtoExcelApp(ctk.CTk):
                 # Get current viewing file (could be different from batch files)
                 current_file = self.pdf_path
                 
+                # Extract i-SCORE and risk grade from current file
+                file_name = Path(current_file).name
+                if file_name not in self.file_risk_grades:
+                    iscore, risk_grade = self.extract_iscore_and_risk_grade(current_file)
+                    if risk_grade:
+                        self.file_risk_grades[file_name] = risk_grade
+                
                 # Extract data from all temp selections on this page
                 with pdfplumber.open(current_file) as pdf:
                     page = pdf.pages[self.current_page]
-                    file_name = Path(current_file).name
                     
                     selection_count = len(self.temp_selections[self.current_page])
                     
@@ -1095,6 +1249,12 @@ class PDFtoExcelApp(ctk.CTk):
                     try:
                         file_name = Path(current_file).name
                         
+                        # Extract i-SCORE and risk grade
+                        if file_name not in self.file_risk_grades:
+                            iscore, risk_grade = self.extract_iscore_and_risk_grade(current_file)
+                            if risk_grade:
+                                self.file_risk_grades[file_name] = risk_grade
+                        
                         # Update progress
                         progress = int((file_idx / total_files) * 90)
                         self.after(0, lambda p=progress, fn=file_name: (
@@ -1193,6 +1353,12 @@ class PDFtoExcelApp(ctk.CTk):
                 
                 for file_idx, pdf_path in enumerate(self.pdf_paths):
                     file_name = Path(pdf_path).name
+                    
+                    # Extract i-SCORE and risk grade
+                    if file_name not in self.file_risk_grades:
+                        iscore, risk_grade = self.extract_iscore_and_risk_grade(pdf_path)
+                        if risk_grade:
+                            self.file_risk_grades[file_name] = risk_grade
                     
                     # Update progress
                     progress = int((file_idx / total_files) * 90)
@@ -1403,6 +1569,12 @@ class PDFtoExcelApp(ctk.CTk):
                 self.clear_preview_btn.configure(state="disabled")
         except Exception:
             pass
+        
+        # Update database file list
+        try:
+            self.update_database_file_list()
+        except Exception:
+            pass
     
     def on_file_selected(self, file_name):
         """Handle file selection change"""
@@ -1499,15 +1671,27 @@ class PDFtoExcelApp(ctk.CTk):
             self.excel_display.heading("#0", text="Row")
             self.excel_display.column("#0", width=50, anchor="center")
             
-            # Configure column headers
+            # Configure column headers with improved layout
+            standard_width = 150  # Equal width for all columns, same as database preview
             for i, col_letter in enumerate(col_letters):
-                self.excel_display.heading(col_letter, text=col_letter)
-                self.excel_display.column(col_letter, width=100, anchor="center")
+                self.excel_display.heading(col_letter, text=col_letter, anchor='w')
+                self.excel_display.column(col_letter, width=standard_width, minwidth=100, anchor='w')
             
-            # Add data rows
+            # Add data rows with improved formatting
             for idx, row in df.iterrows():
-                # Convert row to list and replace None/NaN with empty string
-                row_values = [str(val) if pd.notna(val) and val is not None else "" for val in row]
+                # Format values - replace empty/NaN with "-" for consistency
+                row_values = []
+                for val in row:
+                    if pd.isna(val) or val == "" or str(val).strip() == "":
+                        row_values.append("-")
+                    else:
+                        # Clean and format cell value
+                        formatted_value = str(val).strip()
+                        # Limit very long values to prevent display issues
+                        if len(formatted_value) > 50:
+                            formatted_value = formatted_value[:47] + "..."
+                        row_values.append(formatted_value)
+                
                 self.excel_display.insert("", "end", text=str(idx + 1), values=row_values)
     
     def excel_column_letter(self, n):
@@ -2005,7 +2189,8 @@ class PDFtoExcelApp(ctk.CTk):
                     with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
                         df_cleaned.to_excel(writer, sheet_name="Extracted Data", index=False, header=False)
                         
-                        # Get worksheet
+                        # Get workbook and worksheet
+                        workbook = writer.book
                         worksheet = writer.sheets["Extracted Data"]
                         
                         # Define thick border style for tables
@@ -2060,33 +2245,7 @@ class PDFtoExcelApp(ctk.CTk):
                             start_col = table_range['start_col']
                             end_col = table_range['end_col']
                             
-                            # First pass: Detect Risk Grade row and mark the score cell
-                            risk_grade_row = None
-                            risk_grade_score_col = None
-                            
-                            for row_idx in range(start_row, end_row + 1):
-                                for col_idx in range(start_col, end_col + 1):
-                                    cell = worksheet.cell(row_idx, col_idx)
-                                    cell_value = str(cell.value).strip() if cell.value else ""
-                                    
-                                    # Check if this row contains "Risk Grade"
-                                    if "Risk Grade" in cell_value:
-                                        risk_grade_row = row_idx
-                                        
-                                        # Find the cell with just a number (1-10) in this row
-                                        for score_col in range(start_col, end_col + 1):
-                                            score_cell = worksheet.cell(row_idx, score_col)
-                                            score_value = str(score_cell.value).strip() if score_cell.value else ""
-                                            
-                                            # Check if this is a single digit number (the actual score)
-                                            if score_value.isdigit() and 1 <= int(score_value) <= 10:
-                                                risk_grade_score_col = score_col
-                                                break
-                                        break
-                                if risk_grade_row:
-                                    break
-                            
-                            # Second pass: Apply thick borders and formatting to table cells
+                            # Apply thick borders and formatting to table cells
                             for row_idx in range(start_row, end_row + 1):
                                 for col_idx in range(start_col, end_col + 1):
                                     cell = worksheet.cell(row_idx, col_idx)
@@ -2096,92 +2255,6 @@ class PDFtoExcelApp(ctk.CTk):
                                     
                                     # Center align
                                     cell.alignment = Alignment(horizontal='center', vertical='center')
-                                    
-                                    # Check if this is the Risk Grade score cell - make it bold with yellow background
-                                    is_risk_score_cell = (row_idx == risk_grade_row and col_idx == risk_grade_score_col)
-                                    
-                                    if is_risk_score_cell:
-                                        # Make the risk grade number stand out
-                                        cell.font = Font(bold=True, size=14, color="000000")  # Bold, larger, black
-                                        cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")  # Yellow background
-                            
-                            # Smart merging: Merge horizontally (same row) when cells have identical values
-                            for row_idx in range(start_row, end_row + 1):
-                                col = start_col
-                                while col <= end_col:
-                                    cell = worksheet.cell(row_idx, col)
-                                    cell_value = cell.value
-                                    
-                                    # Skip empty cells
-                                    if cell_value is None or str(cell_value).strip() == "":
-                                        col += 1
-                                        continue
-                                    
-                                    # Find consecutive cells with same value in this row
-                                    merge_end = col
-                                    while merge_end < end_col:
-                                        next_cell = worksheet.cell(row_idx, merge_end + 1)
-                                        next_value = next_cell.value
-                                        
-                                        # Check if values match (handling None and whitespace)
-                                        if next_value is not None and str(cell_value).strip() == str(next_value).strip():
-                                            merge_end += 1
-                                        else:
-                                            break
-                                    
-                                    # Merge if more than one cell has the same value
-                                    if merge_end > col:
-                                        try:
-                                            range_str = f"{get_column_letter(col)}{row_idx}:{get_column_letter(merge_end)}{row_idx}"
-                                            if range_str not in [str(m) for m in worksheet.merged_cells]:
-                                                worksheet.merge_cells(range_str)
-                                                # Re-apply formatting to merged cell
-                                                merged_cell = worksheet.cell(row_idx, col)
-                                                merged_cell.border = thick_border
-                                                merged_cell.alignment = Alignment(horizontal='center', vertical='center')
-                                        except Exception as e:
-                                            print(f"Merge error: {e}")
-                                    
-                                    col = merge_end + 1
-                            
-                            # Vertical merging: Merge down (same column) when cells have identical values
-                            for col_idx in range(start_col, end_col + 1):
-                                row = start_row
-                                while row <= end_row:
-                                    cell = worksheet.cell(row, col_idx)
-                                    cell_value = cell.value
-                                    
-                                    # Skip empty cells
-                                    if cell_value is None or str(cell_value).strip() == "":
-                                        row += 1
-                                        continue
-                                    
-                                    # Find consecutive cells with same value in this column
-                                    merge_end_row = row
-                                    while merge_end_row < end_row:
-                                        next_cell = worksheet.cell(merge_end_row + 1, col_idx)
-                                        next_value = next_cell.value
-                                        
-                                        # Check if values match
-                                        if next_value is not None and str(cell_value).strip() == str(next_value).strip():
-                                            merge_end_row += 1
-                                        else:
-                                            break
-                                    
-                                    # Merge if more than one cell has the same value (at least 2 rows)
-                                    if merge_end_row > row:
-                                        try:
-                                            range_str = f"{get_column_letter(col_idx)}{row}:{get_column_letter(col_idx)}{merge_end_row}"
-                                            if range_str not in [str(m) for m in worksheet.merged_cells]:
-                                                worksheet.merge_cells(range_str)
-                                                # Re-apply formatting to merged cell
-                                                merged_cell = worksheet.cell(row, col_idx)
-                                                merged_cell.border = thick_border
-                                                merged_cell.alignment = Alignment(horizontal='center', vertical='center')
-                                        except Exception as e:
-                                            print(f"Vertical merge error: {e}")
-                                    
-                                    row = merge_end_row + 1
                         
                         # Auto-adjust column widths
                         for column in worksheet.columns:
@@ -2195,6 +2268,37 @@ class PDFtoExcelApp(ctk.CTk):
                                     pass
                             adjusted_width = min(max_length + 2, 50)
                             worksheet.column_dimensions[column_letter].width = adjusted_width
+                        
+                        # Create Risk Grades sheet if we have risk grade for this file
+                        risk_grade = self.file_risk_grades.get(file_name, None)
+                        if risk_grade:
+                            risk_sheet = workbook.create_sheet("Risk Grades")
+                            
+                            # Header
+                            risk_sheet['A1'] = "File Name"
+                            risk_sheet['B1'] = "Risk Grade"
+                            
+                            # Data
+                            risk_sheet['A2'] = file_name
+                            risk_sheet['B2'] = risk_grade
+                            
+                            # Format header
+                            for col in ['A', 'B']:
+                                cell = risk_sheet[f'{col}1']
+                                cell.font = Font(bold=True, size=12)
+                                cell.fill = PatternFill(start_color="1f538d", end_color="1f538d", fill_type="solid")
+                                cell.alignment = Alignment(horizontal='center', vertical='center')
+                                cell.border = thick_border
+                            
+                            # Format risk grade cell
+                            risk_sheet['B2'].font = Font(bold=True, size=14, color="FF0000")
+                            risk_sheet['B2'].fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+                            risk_sheet['B2'].alignment = Alignment(horizontal='center', vertical='center')
+                            risk_sheet['B2'].border = thick_border
+                            
+                            # Adjust column widths
+                            risk_sheet.column_dimensions['A'].width = 50
+                            risk_sheet.column_dimensions['B'].width = 15
                 
                 self.status_label.configure(text=f"✓ Exported {len(self.file_previews)} files")
                 messagebox.showinfo("Success", f"Exported {len(self.file_previews)} files to:\n{save_folder}")
@@ -2202,6 +2306,1046 @@ class PDFtoExcelApp(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export data:\n{str(e)}")
             self.status_label.configure(text="✗ Export failed")
+            import traceback
+            traceback.print_exc()
+    
+    def update_database_file_list(self):
+        """Enable/disable build button based on available data"""
+        try:
+            # Enable build button if there is at least one preview
+            if any((not df.empty) for df in self.file_previews.values()):
+                self.db_build_btn.configure(state="normal")
+            else:
+                self.db_build_btn.configure(state="disabled")
+            self.db_export_btn.configure(state="disabled")
+        except Exception as e:
+            print(f"update_database_file_list error: {e}")
+    
+    def build_database(self):
+        """Build database from PARTICULARS, SUMMARY CREDIT INFORMATION, CREDIT SCORE, SHAREHOLDING INTEREST, CCRIS ENTITY, SUBJECT STATUS, and KEY STATISTICS tables"""
+        self.show_loading_screen("Building database from multiple tables...")
+        
+        def build_db_thread():
+            try:
+                # Include all files from file_previews
+                all_files = list(self.file_previews.keys())
+                
+                if not all_files:
+                    def show_info():
+                        self.hide_loading_screen()
+                        messagebox.showinfo("Info", "No files available to build database.")
+                    self.after(0, show_info)
+                    return
+                
+                print(f"🏗️  Building 7-table database from {len(all_files)} files...")
+                database_rows = []
+                successful_extractions = 0
+                failed_extractions = 0
+                total_files = len(all_files)
+                
+                for file_idx, file_name in enumerate(all_files):
+                    progress = int((file_idx / total_files) * 100)
+                    self.after(0, lambda p=progress: self.update_loading_progress(p))
+                    
+                    print(f"\n📄 Processing file {file_idx + 1}/{total_files}: {file_name}")
+                    df = self.file_previews[file_name]
+                    if df.empty:
+                        print(f"⚠️  Skipping {file_name} - empty DataFrame")
+                        failed_extractions += 1
+                        continue
+                    
+                    # Extract data from this file's DataFrame (can return multiple rows)
+                    extracted_rows = self.extract_database_row(df, file_name)
+                    print(f"🔍 Extraction result type: {type(extracted_rows)}, Content: {extracted_rows is not None}")
+                    
+                    if extracted_rows and isinstance(extracted_rows, list):
+                        # Multiple rows returned (multiple contributing factors)
+                        valid_rows = [row for row in extracted_rows if row and any(row.values())]
+                        if valid_rows:
+                            database_rows.extend(valid_rows)
+                            successful_extractions += 1
+                            print(f"✅ Successfully extracted {len(valid_rows)} rows from {file_name}")
+                            # Debug: Show sample of extracted data
+                            sample_row = valid_rows[0]
+                            print(f"   📋 Sample data: i-SCORE={sample_row.get('i_SCORE', 'N/A')}, Risk_Grade={sample_row.get('Risk_Grade', 'N/A')}")
+                            print(f"   📋 Contributing Factor: {sample_row.get('Key_Contributing_Factor', 'N/A')[:50]}...")
+                        else:
+                            failed_extractions += 1
+                            print(f"❌ Failed to extract valid data from {file_name} - all rows empty")
+                    else:
+                        failed_extractions += 1
+                        print(f"❌ Failed to extract data from {file_name} - got {type(extracted_rows)}")
+                
+                # Create database DataFrame
+                if database_rows:
+                    self.database_df = pd.DataFrame(database_rows)
+                    print(f"\n📊 Multi-table database created with {len(database_rows)} records")
+                else:
+                    self.database_df = pd.DataFrame()
+                    print(f"\n❌ No multi-table data extracted from any files")
+                
+                def finish_build():
+                    self.update_loading_progress(100)
+                    time.sleep(0.2)
+                    self.hide_loading_screen()
+                    
+                    # Update preview
+                    self.update_database_preview()
+                    
+                    # Enable export button if we have data
+                    if not self.database_df.empty:
+                        self.db_export_btn.configure(state="normal")
+                    
+                    summary_msg = f"Multi-Table Database Build Complete!\n\n"
+                    summary_msg += f"✅ Successful extractions: {successful_extractions}/{total_files} files\n"
+                    summary_msg += f"❌ Failed extractions: {failed_extractions}/{total_files} files\n"
+                    summary_msg += f"📊 Total database records: {len(database_rows)}\n\n"
+                    summary_msg += f"Tables extracted:\n"
+                    summary_msg += f"• PARTICULARS OF THE SUBJECT PROVIDED BY YOU (5 fields)\n"
+                    summary_msg += f"• SUMMARY CREDIT INFORMATION (10 fields)\n"
+                    summary_msg += f"• CREDIT SCORE (3 fields with Risk Grade calculation)\n"
+                    summary_msg += f"• SHAREHOLDING INTEREST (9 fields)\n"
+                    summary_msg += f"• CCRIS ENTITY SELECTED BY YOU (1 field)\n"
+                    summary_msg += f"• SUBJECT STATUS (1 field)\n"
+                    summary_msg += f"• KEY STATISTICS (4 fields - split merged cells)\n\n"
+                    summary_msg += f"Note: Creates multiple rows for each combination of:\n"
+                    summary_msg += f"- Contributing factors (bullet-point separated)\n"
+                    summary_msg += f"- Business interests (from shareholding table)\n"
+                    summary_msg += f"- Facility records (earliest + latest 3 approved)\n"
+                    summary_msg += f"Total fields: 35 (5 + 10 + 3 + 9 + 1 + 1 + 4 + 2 tracking fields)"
+                    
+                    self.status_label.configure(text=f"✓ 7-Table Database: {successful_extractions}/{total_files} successful")
+                    messagebox.showinfo("Multi-Table Database Complete", summary_msg)
+                
+                self.after(0, finish_build)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading_screen()
+                    messagebox.showerror("Error", f"Failed to build database:\n{str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                self.after(0, show_error)
+        
+        # Start thread
+        thread = threading.Thread(target=build_db_thread, daemon=True)
+        thread.start()
+    
+    def extract_database_row(self, df, file_name):
+        """Extract data from PARTICULARS, SUMMARY CREDIT INFORMATION, CREDIT SCORE, SHAREHOLDING INTEREST, CCRIS ENTITY, SUBJECT STATUS, and KEY STATISTICS tables"""
+        try:
+            base_row_data = {}
+            
+            print(f"🔍 Extracting data from {file_name}")
+            
+            # Helper function to find value in PARTICULARS table
+            def find_particulars_value(label_text):
+                """Find value from PARTICULARS OF THE SUBJECT PROVIDED BY YOU table"""
+                particulars_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the PARTICULARS table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "PARTICULARS OF THE SUBJECT PROVIDED BY YOU" in cell_str.upper():
+                            particulars_found = True
+                            print(f"✅ Found PARTICULARS table at row {idx}")
+                            break
+                    
+                    if particulars_found:
+                        # Look for the specific label in the rows following the header
+                        for search_idx in range(idx + 1, min(idx + 10, len(df))):  # Search next 10 rows
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            for col_idx, cell in enumerate(search_row):
+                                cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                if label_text.lower() in cell_str.lower():
+                                    # Found the label, get value from next column
+                                    if col_idx + 1 < len(search_row):
+                                        value = search_row.iloc[col_idx + 1]
+                                        result = str(value).strip() if pd.notna(value) else ""
+                                        print(f"✅ Found PARTICULARS {label_text}: '{result}'")
+                                        return result
+                        break
+                
+                print(f"❌ Could not find PARTICULARS {label_text}")
+                return ""
+            
+            # Helper function to find value in SUMMARY CREDIT INFORMATION table
+            def find_summary_credit_value(label_text):
+                """Find value from SUMMARY CREDIT INFORMATION table"""
+                summary_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the SUMMARY CREDIT INFORMATION table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "SUMMARY CREDIT INFORMATION" in cell_str.upper():
+                            summary_found = True
+                            print(f"✅ Found SUMMARY CREDIT INFORMATION table at row {idx}")
+                            break
+                    
+                    if summary_found:
+                        # Look for the specific label in the rows following the header
+                        for search_idx in range(idx + 1, min(idx + 15, len(df))):  # Search next 15 rows
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            for col_idx, cell in enumerate(search_row):
+                                cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                if label_text.lower() in cell_str.lower():
+                                    # Found the label, get value from next column
+                                    if col_idx + 1 < len(search_row):
+                                        value = search_row.iloc[col_idx + 1]
+                                        result = str(value).strip() if pd.notna(value) else ""
+                                        print(f"✅ Found SUMMARY {label_text}: '{result}'")
+                                        return result
+                        break
+                
+                print(f"❌ Could not find SUMMARY {label_text}")
+                return ""
+            
+            # Helper function to find value in CREDIT SCORE table
+            def find_credit_score_value(label_text):
+                """Find value from CREDIT SCORE table"""
+                credit_score_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the CREDIT SCORE table header - more flexible matching
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "CREDIT SCORE" in cell_str.upper() or "i-SCORE" in cell_str.upper():
+                            credit_score_found = True
+                            print(f"✅ Found CREDIT SCORE table at row {idx}")
+                            break
+                    
+                    if credit_score_found:
+                        # Look for the specific label in the rows following the header
+                        for search_idx in range(idx + 1, min(idx + 20, len(df))):  # Search next 20 rows
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            for col_idx, cell in enumerate(search_row):
+                                cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                
+                                # Special handling for i-SCORE - look for numbers
+                                if "i-score" in label_text.lower():
+                                    if "i-score" in cell_str.lower() or re.search(r'\bi-?score\b', cell_str, re.IGNORECASE):
+                                        # Found i-SCORE label, get value from next column or same cell
+                                        if col_idx + 1 < len(search_row):
+                                            value = search_row.iloc[col_idx + 1]
+                                        else:
+                                            # Try to extract number from same cell
+                                            numbers = re.findall(r'\d+', cell_str)
+                                            value = numbers[0] if numbers else ""
+                                        result = str(value).strip() if pd.notna(value) else ""
+                                        print(f"✅ Found i-SCORE: '{result}'")
+                                        return result
+                                
+                                # Special handling for Key Contributing Factors - look for bullet points
+                                elif "contributing" in label_text.lower():
+                                    if "contributing" in cell_str.lower() or "factor" in cell_str.lower():
+                                        # Found contributing factors, collect all text from this and following rows
+                                        factors_text = ""
+                                        # Check current cell first
+                                        if col_idx + 1 < len(search_row):
+                                            next_cell = search_row.iloc[col_idx + 1]
+                                            if pd.notna(next_cell):
+                                                factors_text += str(next_cell).strip()
+                                        
+                                        # Check following rows for more factors
+                                        for factor_idx in range(search_idx + 1, min(search_idx + 10, len(df))):
+                                            if factor_idx >= len(df):
+                                                break
+                                            factor_row = df.iloc[factor_idx]
+                                            for factor_col_idx, factor_cell in enumerate(factor_row):
+                                                factor_str = str(factor_cell).strip() if pd.notna(factor_cell) else ""
+                                                # Look for bullet points or continuation text
+                                                if "•" in factor_str or (len(factor_str) > 10 and not any(keyword in factor_str.lower() for keyword in ["summary", "particular", "experian", "page"])):
+                                                    if factors_text:
+                                                        factors_text += " " + factor_str
+                                                    else:
+                                                        factors_text = factor_str
+                                        
+                                        result = factors_text.strip()
+                                        print(f"✅ Found Contributing Factors: '{result[:100]}...'")
+                                        return result
+                                
+                                # Regular label matching
+                                elif label_text.lower() in cell_str.lower():
+                                    # Found the label, get value from next column
+                                    if col_idx + 1 < len(search_row):
+                                        value = search_row.iloc[col_idx + 1]
+                                        result = str(value).strip() if pd.notna(value) else ""
+                                        print(f"✅ Found CREDIT SCORE {label_text}: '{result}'")
+                                        return result
+                        break
+                
+                print(f"❌ Could not find CREDIT SCORE {label_text}")
+                return ""
+            
+            # Helper function to extract SHAREHOLDING INTEREST data
+            def find_shareholding_interests():
+                """Find all business interests from SHAREHOLDING INTEREST table"""
+                interests = []
+                shareholding_found = False
+                header_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the SHAREHOLDING INTEREST table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "SHAREHOLDING INTEREST" in cell_str.upper() or ("INTEREST IN COMPANY" in cell_str.upper() and "BUSINESS" in cell_str.upper()):
+                            shareholding_found = True
+                            print(f"✅ Found SHAREHOLDING INTEREST table at row {idx}")
+                            break
+                    
+                    if shareholding_found and not header_found:
+                        # Look for the column header row (No, Name, Position, etc.)
+                        for header_idx in range(idx + 1, min(idx + 10, len(df))):
+                            if header_idx >= len(df):
+                                break
+                            header_row = df.iloc[header_idx]
+                            header_text = "".join([str(cell).strip() if pd.notna(cell) else "" for cell in header_row])
+                            
+                            # Check if this row contains the column headers
+                            if ("No" in header_text and "Name" in header_text and "Position" in header_text and 
+                                "Appointed" in header_text):
+                                header_found = True
+                                print(f"✅ Found column headers at row {header_idx}")
+                                
+                                # Now look for data rows after the header
+                                for data_idx in range(header_idx + 1, min(header_idx + 50, len(df))):
+                                    if data_idx >= len(df):
+                                        break
+                                    data_row = df.iloc[data_idx]
+                                    
+                                    # Extract row data
+                                    row_data = []
+                                    for col_idx, cell in enumerate(data_row):
+                                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                        row_data.append(cell_str)
+                                    
+                                    # Check if this is a valid data row (starts with number)
+                                    if (len(row_data) > 0 and row_data[0].isdigit() and
+                                        len([x for x in row_data if x]) >= 4):  # At least 4 non-empty columns
+                                        
+                                        # Parse according to actual table structure:
+                                        # No | Name | Position | Appointed | Business Expiry Date | Shareholding | % | Remark | Last Updated by Experian
+                                        interest_data = {
+                                            'No': row_data[0] if len(row_data) > 0 else "-",
+                                            'Name': row_data[1] if len(row_data) > 1 else "-",
+                                            'Position': row_data[2] if len(row_data) > 2 else "-",
+                                            'Appointed': row_data[3] if len(row_data) > 3 else "-",
+                                            'Business_Expiry_Date': row_data[4] if len(row_data) > 4 else "-",
+                                            'Shareholding': row_data[5] if len(row_data) > 5 else "-",
+                                            'Percentage': row_data[6] if len(row_data) > 6 else "-",
+                                            'Remark': row_data[7] if len(row_data) > 7 else "-",
+                                            'Last_Updated_by_Experian': row_data[8] if len(row_data) > 8 else "-"
+                                        }
+                                        
+                                        # Clean and format data - replace empty with "-"
+                                        for key, value in interest_data.items():
+                                            if not value or value.strip() == "" or pd.isna(value):
+                                                interest_data[key] = "-"
+                                            else:
+                                                # Clean extra spaces and newlines
+                                                clean_value = re.sub(r'\s+', ' ', str(value).strip())
+                                                interest_data[key] = clean_value
+                                        
+                                        interests.append(interest_data)
+                                        print(f"✅ Found business interest {len(interests)}: {interest_data['Name'][:50]}... (Position: {interest_data['Position']})")
+                                break  # Found headers, processed data
+                        break  # Found shareholding table
+                
+                if not interests:
+                    print(f"❌ Could not find SHAREHOLDING INTEREST data")
+                    # Return empty interest to maintain structure
+                    interests.append({
+                        'No': "-",
+                        'Name': "-",
+                        'Position': "-",
+                        'Appointed': "-",
+                        'Business_Expiry_Date': "-",
+                        'Shareholding': "-",
+                        'Percentage': "-",
+                        'Remark': "-",
+                        'Last_Updated_by_Experian': "-"
+                    })
+                
+                print(f"🎯 Found {len(interests)} business interest(s) in SHAREHOLDING INTEREST table")
+                return interests
+            
+            # Helper function to extract CCRIS ENTITY data
+            def find_ccris_entity_key():
+                """Find CCRIS Entity Key from CCRIS ENTITY SELECTED BY YOU table"""
+                ccris_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the CCRIS ENTITY table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "CCRIS ENTITY SELECTED BY YOU" in cell_str.upper():
+                            ccris_found = True
+                            print(f"✅ Found CCRIS ENTITY table at row {idx}")
+                            break
+                    
+                    if ccris_found:
+                        # Look for CCRIS Entity Key in the following rows
+                        for search_idx in range(idx + 1, min(idx + 20, len(df))):
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            
+                            for col_idx, cell in enumerate(search_row):
+                                cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                if "CCRIS Entity Key" in cell_str:
+                                    # Found the label, get value from next column
+                                    if col_idx + 1 < len(search_row):
+                                        value = search_row.iloc[col_idx + 1]
+                                        result = str(value).strip() if pd.notna(value) else "-"
+                                        print(f"✅ Found CCRIS Entity Key: '{result}'")
+                                        return result if result else "-"
+                        break
+                
+                print(f"❌ Could not find CCRIS Entity Key")
+                return "-"
+            
+            # Helper function to extract SUMMARY CREDIT REPORT data
+            def find_summary_credit_data():
+                """Find data from SUMMARY CREDIT REPORT table with custom field naming"""
+                summary_found = False
+                result = {
+                    'A_App_No_Application': "-",
+                    'A_App_Ttl_Amnt': "-", 
+                    'B_Pend_No_Application': "-",
+                    'B_Pend_Ttl_Amnt': "-"
+                }
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the SUMMARY CREDIT REPORT table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "SUMMARY CREDIT REPORT" in cell_str.upper():
+                            summary_found = True
+                            print(f"✅ Found SUMMARY CREDIT REPORT table at row {idx}")
+                            break
+                    
+                    if summary_found:
+                        # Look for the specific rows in the following rows
+                        for search_idx in range(idx + 1, min(idx + 20, len(df))):
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            
+                            # Convert row to list for easier processing
+                            row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in search_row]
+                            
+                            # Check for "A. Approved for past 12 months" row
+                            for col_idx, cell_str in enumerate(row_data):
+                                if "A. Approved for past 12 months" in cell_str:
+                                    # Found A row, extract No. of Applications and Total Amount
+                                    if col_idx + 1 < len(row_data):
+                                        result['A_App_No_Application'] = row_data[col_idx + 1].strip()
+                                    if col_idx + 2 < len(row_data):
+                                        result['A_App_Ttl_Amnt'] = row_data[col_idx + 2].strip()
+                                    print(f"✅ Found A. Approved data: {result['A_App_No_Application']}, {result['A_App_Ttl_Amnt']}")
+                                    break
+                                    
+                                elif "B. Pending" in cell_str:
+                                    # Found B row, extract No. of Applications and Total Amount  
+                                    if col_idx + 1 < len(row_data):
+                                        result['B_Pend_No_Application'] = row_data[col_idx + 1].strip()
+                                    if col_idx + 2 < len(row_data):
+                                        result['B_Pend_Ttl_Amnt'] = row_data[col_idx + 2].strip()
+                                    print(f"✅ Found B. Pending data: {result['B_Pend_No_Application']}, {result['B_Pend_Ttl_Amnt']}")
+                                    break
+                        break
+                
+                # Clean results - replace empty with "-"
+                for key, value in result.items():
+                    if not value or value == "":
+                        result[key] = "-"
+                
+                print(f"🎯 SUMMARY CREDIT REPORT extraction complete: {result}")
+                return result
+
+            # Helper function to extract Subject Status data
+            def find_warning_remark():
+                """Find Warning Remark from Subject Status table"""
+                subject_status_found = False
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the Subject Status table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "Subject Status" in cell_str:
+                            subject_status_found = True
+                            print(f"✅ Found Subject Status table at row {idx}")
+                            break
+                    
+                    if subject_status_found:
+                        # Look for Warning Remark in the following rows
+                        for search_idx in range(idx + 1, min(idx + 10, len(df))):
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            
+                            for col_idx, cell in enumerate(search_row):
+                                cell_str = str(cell).strip() if pd.notna(cell) else ""
+                                if "Warning Remark" in cell_str:
+                                    # Found the label, get value from next column
+                                    if col_idx + 1 < len(search_row):
+                                        value = search_row.iloc[col_idx + 1]
+                                        result = str(value).strip() if pd.notna(value) else "-"
+                                        print(f"✅ Found Warning Remark: '{result}'")
+                                        return result if result else "-"
+                        break
+                
+                print(f"❌ Could not find Warning Remark")
+                return "-"
+            
+            # Helper function to extract SUMMARY OF POTENTIAL & CURRENT LIABILITIES data
+            def find_potential_liabilities_data():
+                """Find data from SUMMARY OF POTENTIAL & CURRENT LIABILITIES table with hybrid structure"""
+                liabilities_found = False
+                result = {
+                    'AsBorr_Outstanding_RM': "-",
+                    'AsBorr_Total_Limit_RM': "-",
+                    'AsBorr_FEC_Limit_RM': "-",
+                    'Legal_Action_Taken': "-",
+                    'Special_Attention_Account': "-"
+                }
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the SUMMARY OF POTENTIAL & CURRENT LIABILITIES table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "SUMMARY OF POTENTIAL" in cell_str.upper() and "CURRENT LIABILITIES" in cell_str.upper():
+                            liabilities_found = True
+                            print(f"✅ Found SUMMARY OF POTENTIAL & CURRENT LIABILITIES table at row {idx}")
+                            break
+                    
+                    if liabilities_found:
+                        # Look for the specific rows in the following rows
+                        for search_idx in range(idx + 1, min(idx + 30, len(df))):
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            
+                            # Convert row to list for easier processing
+                            row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in search_row]
+                            
+                            # Check for "As Borrower" row (row-based data with 3 values)
+                            for col_idx, cell_str in enumerate(row_data):
+                                if "As Borrower" in cell_str:
+                                    # Found As Borrower row, extract the 3 numeric values
+                                    if col_idx + 1 < len(row_data):
+                                        result['AsBorr_Outstanding_RM'] = row_data[col_idx + 1].strip()
+                                    if col_idx + 2 < len(row_data):
+                                        result['AsBorr_Total_Limit_RM'] = row_data[col_idx + 2].strip()
+                                    if col_idx + 3 < len(row_data):
+                                        result['AsBorr_FEC_Limit_RM'] = row_data[col_idx + 3].strip()
+                                    print(f"✅ Found As Borrower data: {result['AsBorr_Outstanding_RM']}, {result['AsBorr_Total_Limit_RM']}, {result['AsBorr_FEC_Limit_RM']}")
+                                    break
+                                    
+                                elif "Legal Action Taken" in cell_str:
+                                    # Found Legal Action Taken, extract value from next column
+                                    if col_idx + 1 < len(row_data):
+                                        result['Legal_Action_Taken'] = row_data[col_idx + 1].strip()
+                                    print(f"✅ Found Legal Action Taken: {result['Legal_Action_Taken']}")
+                                    break
+                                    
+                                elif "Special Attention Account" in cell_str:
+                                    # Found Special Attention Account, extract value from next column
+                                    if col_idx + 1 < len(row_data):
+                                        result['Special_Attention_Account'] = row_data[col_idx + 1].strip()
+                                    print(f"✅ Found Special Attention Account: {result['Special_Attention_Account']}")
+                                    break
+                        break
+                
+                # Clean results - replace empty with "-"
+                for key, value in result.items():
+                    if not value or value == "":
+                        result[key] = "-"
+                
+                print(f"🎯 SUMMARY OF POTENTIAL & CURRENT LIABILITIES extraction complete: {result}")
+                return result
+            
+            # Helper function to extract Legal Suits and Bankruptcy data
+            def find_legal_suits_bankruptcy_data():
+                """Find data from Legal Suits and Bankruptcy tables where totals are in headers"""
+                result = {
+                    'Legal_Suits_Defendant': "-",
+                    'Legal_Suits_Plaintiff': "-",
+                    'Bankruptcy_Action': "-"
+                }
+                
+                for idx, row in df.iterrows():
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        
+                        # Check for "LEGAL SUITS - SUBJECT AS DEFENDANT Total: X"
+                        if "LEGAL SUITS" in cell_str.upper() and "SUBJECT AS DEFENDANT" in cell_str.upper() and "TOTAL" in cell_str.upper():
+                            # Extract number from "Total: 0" pattern
+                            match = re.search(r'Total:\s*(\d+)', cell_str, re.IGNORECASE)
+                            if match:
+                                result['Legal_Suits_Defendant'] = match.group(1)
+                                print(f"✅ Found Legal Suits Defendant Total: {result['Legal_Suits_Defendant']}")
+                        
+                        # Check for "LEGAL SUITS - SUBJECT AS PLAINTIFF Total: X"
+                        elif "LEGAL SUITS" in cell_str.upper() and "SUBJECT AS PLAINTIFF" in cell_str.upper() and "TOTAL" in cell_str.upper():
+                            # Extract number from "Total: 0" pattern
+                            match = re.search(r'Total:\s*(\d+)', cell_str, re.IGNORECASE)
+                            if match:
+                                result['Legal_Suits_Plaintiff'] = match.group(1)
+                                print(f"✅ Found Legal Suits Plaintiff Total: {result['Legal_Suits_Plaintiff']}")
+                        
+                        # Check for "BANKRUPTCY ACTION" header
+                        elif "BANKRUPTCY ACTION" in cell_str.upper():
+                            # Look for "Total: X" in the following rows
+                            for search_idx in range(idx + 1, min(idx + 5, len(df))):
+                                if search_idx >= len(df):
+                                    break
+                                search_row = df.iloc[search_idx]
+                                
+                                for search_col_idx, search_cell in enumerate(search_row):
+                                    search_str = str(search_cell).strip() if pd.notna(search_cell) else ""
+                                    if "Total:" in search_str or "Total :" in search_str:
+                                        # Extract number from "Total: 0" pattern
+                                        match = re.search(r'Total:\s*(\d+)', search_str, re.IGNORECASE)
+                                        if match:
+                                            result['Bankruptcy_Action'] = match.group(1)
+                                            print(f"✅ Found Bankruptcy Action Total: {result['Bankruptcy_Action']}")
+                                            break
+                                
+                                if result['Bankruptcy_Action'] != "-":
+                                    break
+                
+                print(f"🎯 Legal Suits & Bankruptcy extraction complete: {result}")
+                return result
+            
+            # Helper function to extract TRADE / CREDIT REFERENCE data
+            def find_trade_credit_reference_data():
+                """Find data from TRADE / CREDIT REFERENCE (CR) table"""
+                trade_found = False
+                trade_start_idx = -1
+                result = {
+                    'TCR_Subject_Name': "-",
+                    'TCR_Creditors_Name': "-",
+                    'TCR_Creditors_Contact': "-",
+                    'TCR_Ref_No': "-",
+                    'TCR_Industry': "-",
+                    'TCR_Solicitors_Name': "-",
+                    'TCR_Guarantor_Owner': "-",
+                    'TCR_Subject_ID': "-",
+                    'TCR_Amount_Due': "-",
+                    'TCR_Aging_Days': "-",
+                    'TCR_Debt_Type': "-",
+                    'TCR_Document_Status_Date': "-",
+                    'TCR_Solicitors_Contact': "-",
+                    'TCR_Remark': "-"
+                }
+                
+                # Mapping of label patterns to result keys
+                label_mapping = {
+                    'Subject Name': 'TCR_Subject_Name',
+                    'Creditor\'s Name': 'TCR_Creditors_Name',
+                    'Creditor\'s Contact': 'TCR_Creditors_Contact',
+                    'Ref No': 'TCR_Ref_No',
+                    'Industry': 'TCR_Industry',
+                    'Solicitor\'s Name': 'TCR_Solicitors_Name',
+                    'Guarantor / Owner': 'TCR_Guarantor_Owner',
+                    'Subject ID': 'TCR_Subject_ID',
+                    'Amount Due': 'TCR_Amount_Due',
+                    'Aging Days': 'TCR_Aging_Days',
+                    'Debt Type': 'TCR_Debt_Type',
+                    'Document/Status Date': 'TCR_Document_Status_Date',
+                    'Solicitor\'s Contact': 'TCR_Solicitors_Contact',
+                    'Remark': 'TCR_Remark'
+                }
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the TRADE / CREDIT REFERENCE table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "TRADE / CREDIT REFERENCE" in cell_str.upper() and "(CR)" in cell_str.upper():
+                            trade_found = True
+                            trade_start_idx = idx
+                            print(f"✅ Found TRADE / CREDIT REFERENCE (CR) table at row {idx}")
+                            break
+                    
+                    if trade_found:
+                        # Extract label-value pairs from the table
+                        # The structure is: Label1 | Value1 | Label2 | Value2
+                        row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in row]
+                        
+                        # Check each cell for matching labels
+                        for col_idx, cell_str in enumerate(row_data):
+                            for label_pattern, result_key in label_mapping.items():
+                                if cell_str == label_pattern:
+                                    # Found a label, get value from next column
+                                    if col_idx + 1 < len(row_data):
+                                        value = row_data[col_idx + 1].strip()
+                                        if value and value != "":
+                                            result[result_key] = value
+                                            print(f"✅ Found TCR {label_pattern}: {value}")
+                                    break
+                        
+                        # Stop after finding enough data rows (typically within 10-15 rows)
+                        if trade_start_idx != -1 and idx > trade_start_idx + 20:
+                            break
+                
+                if not trade_found:
+                    print(f"❌ TRADE / CREDIT REFERENCE (CR) table not found")
+                
+                # Clean results - replace empty with "-"
+                for key, value in result.items():
+                    if not value or value == "":
+                        result[key] = "-"
+                
+                print(f"🎯 TRADE / CREDIT REFERENCE extraction complete")
+                return result
+            
+            # Helper function to extract NON-BANK LENDER CREDIT INFORMATION data
+            def find_nlci_data():
+                """Find data from NON-BANK LENDER CREDIT INFORMATION (NLCI) table only"""
+                nlci_found = False
+                nlci_start_idx = -1
+                nlci_end_idx = -1
+                result = {
+                    'Ttl_Limit': "-",
+                    'Ttl_Outstanding': "-",
+                    'Conduct_Highest_Value': "-"
+                }
+                
+                conduct_values = []  # Store all conduct values to find highest
+                
+                # First, find the exact boundaries of NLCI table
+                for idx, row in df.iterrows():
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        # Must contain "NON-BANK LENDER CREDIT INFORMATION" and "NLCI" to be sure
+                        if "NON-BANK LENDER CREDIT INFORMATION" in cell_str.upper() and "NLCI" in cell_str.upper():
+                            nlci_found = True
+                            nlci_start_idx = idx
+                            print(f"✅ Found NON-BANK LENDER CREDIT INFORMATION (NLCI) table at row {idx}")
+                            break
+                    
+                    # Find where NLCI table ends (before WRITTEN-OFF ACCOUNT or next major section)
+                    if nlci_found and nlci_end_idx == -1:
+                        for cell in row:
+                            cell_str = str(cell).strip() if pd.notna(cell) else ""
+                            if "WRITTEN-OFF ACCOUNT" in cell_str.upper():
+                                nlci_end_idx = idx
+                                print(f"✅ NLCI table ends at row {idx} (WRITTEN-OFF ACCOUNT section)")
+                                break
+                    
+                    if nlci_found and nlci_end_idx != -1:
+                        break
+                
+                if not nlci_found:
+                    print(f"❌ NON-BANK LENDER CREDIT INFORMATION (NLCI) table not found")
+                    return result
+                
+                # Set end boundary if not found
+                if nlci_end_idx == -1:
+                    nlci_end_idx = min(nlci_start_idx + 50, len(df))
+                
+                # Now extract data only from within NLCI table boundaries
+                for search_idx in range(nlci_start_idx + 1, nlci_end_idx):
+                    if search_idx >= len(df):
+                        break
+                    search_row = df.iloc[search_idx]
+                    
+                    # Convert row to list for easier processing
+                    row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in search_row]
+                    
+                    # Check for "TOTAL" row to extract Ttl_Limit and Ttl_Outstanding
+                    # The row structure is: TOTAL  1,198.00  [empty cells]  TOTAL  675.28
+                    total_count = 0
+                    for col_idx, cell_str in enumerate(row_data):
+                        if cell_str.upper() == "TOTAL":
+                            total_count += 1
+                            
+                            # First TOTAL - get Ttl_Limit (next numeric value)
+                            if total_count == 1:
+                                for offset in range(1, min(10, len(row_data) - col_idx)):
+                                    val = row_data[col_idx + offset].replace(',', '').strip()
+                                    if val and re.match(r'^\d+\.?\d*$', val):
+                                        result['Ttl_Limit'] = row_data[col_idx + offset].strip()
+                                        print(f"✅ Found NLCI Ttl_Limit: {result['Ttl_Limit']}")
+                                        break
+                            
+                            # Second TOTAL - get Ttl_Outstanding (next numeric value)
+                            elif total_count == 2:
+                                for offset in range(1, min(10, len(row_data) - col_idx)):
+                                    val = row_data[col_idx + offset].replace(',', '').strip()
+                                    if val and re.match(r'^\d+\.?\d*$', val):
+                                        result['Ttl_Outstanding'] = row_data[col_idx + offset].strip()
+                                        print(f"✅ Found NLCI Ttl_Outstanding: {result['Ttl_Outstanding']}")
+                                        break
+                                break  # Found both totals, exit loop
+                    
+                    # Collect all numeric values from "Conduct of Account" columns within NLCI section
+                    # Look for rows that contain BNPL (Buy Now Pay Later) to confirm it's NLCI data
+                    is_nlci_row = any("BNPL" in str(cell).upper() for cell in search_row)
+                    
+                    if is_nlci_row or any("OUTSTANDING CREDIT" in str(cell).upper() for cell in search_row):
+                        # These appear in the right side of the table (after many columns)
+                        for col_idx, cell_str in enumerate(row_data):
+                            # Skip first few columns (No, date, capacity, etc.)
+                            if col_idx > 10:  # Conduct columns are typically after column 10
+                                val = cell_str.replace(',', '').strip()
+                                # Check if it's a small integer (conduct values are typically 0-9)
+                                if val and re.match(r'^\d+$', val):
+                                    num_val = int(val)
+                                    if 0 <= num_val <= 99:  # Reasonable range for conduct values
+                                        conduct_values.append(num_val)
+                
+                # Find highest conduct value
+                if conduct_values:
+                    highest = max(conduct_values)
+                    result['Conduct_Highest_Value'] = str(highest)
+                    print(f"✅ Found NLCI Conduct Highest Value: {result['Conduct_Highest_Value']} (from {len(conduct_values)} values)")
+                else:
+                    print(f"❌ No conduct values found in NLCI table")
+                
+                print(f"🎯 NON-BANK LENDER CREDIT INFORMATION extraction complete: {result}")
+                return result
+
+            # Extract base data from all tables (common to all rows)
+            base_row_data['Subject_Name'] = find_particulars_value("Name Of Subject")
+            base_row_data['IC_PP_No'] = find_particulars_value("IC / PP No") 
+            base_row_data['New_IC_No'] = find_particulars_value("New IC No")
+            base_row_data['Your_Ref_No'] = find_particulars_value("Your Ref. No")
+            base_row_data['Nationality'] = find_particulars_value("Nationality")
+            
+            # Extract SUMMARY CREDIT REPORT data with custom field naming
+            summary_credit_data = find_summary_credit_data()
+            base_row_data['A_App_No_Application'] = summary_credit_data['A_App_No_Application']
+            base_row_data['A_App_Ttl_Amnt'] = summary_credit_data['A_App_Ttl_Amnt']
+            base_row_data['B_Pend_No_Application'] = summary_credit_data['B_Pend_No_Application']
+            base_row_data['B_Pend_Ttl_Amnt'] = summary_credit_data['B_Pend_Ttl_Amnt']
+            
+            # Extract SUMMARY OF POTENTIAL & CURRENT LIABILITIES data with hybrid structure
+            potential_liabilities_data = find_potential_liabilities_data()
+            base_row_data['AsBorr_Outstanding_RM'] = potential_liabilities_data['AsBorr_Outstanding_RM']
+            base_row_data['AsBorr_Total_Limit_RM'] = potential_liabilities_data['AsBorr_Total_Limit_RM']
+            base_row_data['AsBorr_FEC_Limit_RM'] = potential_liabilities_data['AsBorr_FEC_Limit_RM']
+            base_row_data['Legal_Action_Taken'] = potential_liabilities_data['Legal_Action_Taken']
+            base_row_data['Special_Attention_Account'] = potential_liabilities_data['Special_Attention_Account']
+            
+            # Extract Legal Suits and Bankruptcy data (totals in headers)
+            legal_suits_bankruptcy_data = find_legal_suits_bankruptcy_data()
+            base_row_data['Legal_Suits_Defendant'] = legal_suits_bankruptcy_data['Legal_Suits_Defendant']
+            base_row_data['Legal_Suits_Plaintiff'] = legal_suits_bankruptcy_data['Legal_Suits_Plaintiff']
+            base_row_data['Bankruptcy_Action'] = legal_suits_bankruptcy_data['Bankruptcy_Action']
+            
+            # Extract NON-BANK LENDER CREDIT INFORMATION data
+            nlci_data = find_nlci_data()
+            base_row_data['Ttl_Limit'] = nlci_data['Ttl_Limit']
+            base_row_data['Ttl_Outstanding'] = nlci_data['Ttl_Outstanding']
+            base_row_data['Conduct_Highest_Value'] = nlci_data['Conduct_Highest_Value']
+            
+            # Extract TRADE / CREDIT REFERENCE data
+            trade_credit_data = find_trade_credit_reference_data()
+            base_row_data['TCR_Subject_Name'] = trade_credit_data['TCR_Subject_Name']
+            base_row_data['TCR_Creditors_Name'] = trade_credit_data['TCR_Creditors_Name']
+            base_row_data['TCR_Creditors_Contact'] = trade_credit_data['TCR_Creditors_Contact']
+            base_row_data['TCR_Ref_No'] = trade_credit_data['TCR_Ref_No']
+            base_row_data['TCR_Industry'] = trade_credit_data['TCR_Industry']
+            base_row_data['TCR_Solicitors_Name'] = trade_credit_data['TCR_Solicitors_Name']
+            base_row_data['TCR_Guarantor_Owner'] = trade_credit_data['TCR_Guarantor_Owner']
+            base_row_data['TCR_Subject_ID'] = trade_credit_data['TCR_Subject_ID']
+            base_row_data['TCR_Amount_Due'] = trade_credit_data['TCR_Amount_Due']
+            base_row_data['TCR_Aging_Days'] = trade_credit_data['TCR_Aging_Days']
+            base_row_data['TCR_Debt_Type'] = trade_credit_data['TCR_Debt_Type']
+            base_row_data['TCR_Document_Status_Date'] = trade_credit_data['TCR_Document_Status_Date']
+            base_row_data['TCR_Solicitors_Contact'] = trade_credit_data['TCR_Solicitors_Contact']
+            base_row_data['TCR_Remark'] = trade_credit_data['TCR_Remark']
+            
+            # Keep the remaining SUMMARY CREDIT INFORMATION fields (if they still exist in the PDF)
+            base_row_data['Legal_Action_Banking'] = find_summary_credit_value("Legal Action taken (from Banking)")
+            base_row_data['Existing_Facilities'] = find_summary_credit_value("Existing No. of Facility (from Banking)")
+            base_row_data['Bankruptcy_Record'] = find_summary_credit_value("Bankruptcy Record")
+            base_row_data['Legal_Suits'] = find_summary_credit_value("Legal Suits")
+            base_row_data['Trade_Credit_Reference'] = find_summary_credit_value("Trade / Credit Reference")
+            base_row_data['Total_Enquiries_12m'] = find_summary_credit_value("Total Enquiries for Last 12 months")
+            base_row_data['Total_Companies_Interest'] = find_summary_credit_value("Total Companies/Businesses Interest")
+            
+            # Extract i-SCORE and calculate Risk Grade
+            iscore_str = find_credit_score_value("i-SCORE")
+            print(f"🎯 Raw i-SCORE string: '{iscore_str}'")
+            
+            # Clean and extract numeric value from i-SCORE
+            iscore_clean = ""
+            iscore_num = 0
+            if iscore_str:
+                # Remove any non-numeric characters and extract numbers
+                numbers = re.findall(r'\d+', str(iscore_str))
+                if numbers:
+                    iscore_clean = numbers[0]  # Take first number found
+                    try:
+                        iscore_num = int(iscore_clean)
+                        print(f"✅ Extracted i-SCORE number: {iscore_num}")
+                    except:
+                        iscore_num = 0
+                        print(f"❌ Could not convert i-SCORE to number: '{iscore_clean}'")
+                else:
+                    print(f"❌ No numeric i-SCORE found in: '{iscore_str}'")
+            
+            # Calculate risk grade
+            risk_grade = ""
+            if iscore_num > 0:
+                risk_grade_num = self.extract_risk_grade_from_score(iscore_num)
+                risk_grade = str(risk_grade_num) if risk_grade_num else ""
+                print(f"✅ Calculated Risk Grade: {risk_grade} (from i-SCORE: {iscore_num})")
+            else:
+                print(f"❌ Cannot calculate risk grade - invalid i-SCORE: {iscore_num}")
+            
+            base_row_data['i_SCORE'] = iscore_clean if iscore_clean else iscore_str
+            base_row_data['Risk_Grade'] = risk_grade
+            
+            # Extract CCRIS ENTITY data
+            base_row_data['CCRIS_Entity_Key'] = find_ccris_entity_key()
+            
+            # Extract Subject Status data
+            base_row_data['Warning_Remark'] = find_warning_remark()
+            
+            # Extract Key Contributing Factors
+            contributing_factors_raw = find_credit_score_value("Key Contributing Factors")
+            print(f"🎯 Raw Contributing Factors: '{contributing_factors_raw[:200] if contributing_factors_raw else 'None'}...'")
+            
+            # Process contributing factors
+            contributing_factors = []
+            if contributing_factors_raw and len(contributing_factors_raw.strip()) > 0:
+                clean_text = contributing_factors_raw.strip()
+                
+                if "•" in clean_text:
+                    # Split by bullet points
+                    parts = clean_text.split("•")
+                    for part in parts:
+                        cleaned_part = part.strip()
+                        if cleaned_part and len(cleaned_part) > 3:
+                            cleaned_part = re.sub(r'^[\s\-\*•]+', '', cleaned_part)
+                            cleaned_part = re.sub(r'[\s\-\*•]+$', '', cleaned_part)
+                            if cleaned_part:
+                                contributing_factors.append(cleaned_part)
+                else:
+                    # Single factor
+                    contributing_factors.append(clean_text)
+            
+            if not contributing_factors:
+                contributing_factors.append("")  # Empty factor to maintain structure
+            
+            print(f"🎯 Processed {len(contributing_factors)} contributing factor(s)")
+            
+            # Extract SHAREHOLDING INTEREST data
+            shareholding_interests = find_shareholding_interests()
+            
+            # Create cross-product of contributing factors and shareholding interests only
+            result_rows = []
+            row_index = 1
+            
+            for factor_idx, factor in enumerate(contributing_factors):
+                for interest_idx, interest in enumerate(shareholding_interests):
+                    row_data = base_row_data.copy()
+                    
+                    # Add contributing factor data
+                    row_data['Key_Contributing_Factor'] = factor
+                    
+                    # Add shareholding interest data (using correct field names)
+                    row_data['No'] = interest['No']
+                    row_data['Name'] = interest['Name']
+                    row_data['Position'] = interest['Position']
+                    row_data['Appointed'] = interest['Appointed']
+                    row_data['Business_Expiry_Date'] = interest['Business_Expiry_Date']
+                    row_data['Shareholding'] = interest['Shareholding']
+                    row_data['Percentage'] = interest['Percentage']
+                    row_data['Remark'] = interest['Remark']
+                    row_data['Last_Updated_by_Experian'] = interest['Last_Updated_by_Experian']
+                    
+                    result_rows.append(row_data)
+                    
+                    print(f"✅ Created Row {row_index}: Factor={factor[:30]}..., Company={interest['Name'][:30]}...")
+                    row_index += 1
+            
+            print(f"🎯 Final result: {len(result_rows)} database rows created for {file_name} ({len(contributing_factors)} factors × {len(shareholding_interests)} interests)")
+            return result_rows
+            
+        except Exception as e:
+            print(f"Error extracting data from {file_name}: {e}")
+            return None
+    
+    def update_database_preview(self, max_rows=200):
+        """Update the database preview in the Database Viewer tab with improved layout"""
+        try:
+            # Clear existing columns and rows
+            for col in self.db_tree["columns"]:
+                self.db_tree.heading(col, text="")
+            self.db_tree.delete(*self.db_tree.get_children())
+            
+            if self.database_df is None or self.database_df.empty:
+                return
+            
+            # Configure columns
+            columns = list(self.database_df.columns)
+            self.db_tree['columns'] = columns
+            
+            # Configure column headings and equal widths for better layout
+            standard_width = 150  # Equal width for all columns
+            for col in columns:
+                # Clean column name for display (remove underscores, title case)
+                display_name = col.replace('_', ' ').title()
+                self.db_tree.heading(col, text=display_name, anchor='w')
+                self.db_tree.column(col, width=standard_width, minwidth=100, anchor='w')
+            
+            # Add data (limit to max_rows for performance)
+            display_df = self.database_df.head(max_rows) if len(self.database_df) > max_rows else self.database_df
+            
+            for idx, row in display_df.iterrows():
+                # Format values - replace empty/NaN with "-" for consistency
+                values = []
+                for col in columns:
+                    cell_value = row[col]
+                    if pd.isna(cell_value) or cell_value == "" or str(cell_value).strip() == "":
+                        values.append("-")
+                    else:
+                        # Clean and format cell value
+                        formatted_value = str(cell_value).strip()
+                        # Limit very long values to prevent display issues
+                        if len(formatted_value) > 50:
+                            formatted_value = formatted_value[:47] + "..."
+                        values.append(formatted_value)
+                
+                self.db_tree.insert("", "end", values=values)
+        except Exception as e:
+            print(f"update_database_preview error: {e}")
+    
+    def export_database(self):
+        """Export the built database to an Excel file named Database_experian_<datetime>.xlsx"""
+        try:
+            if self.database_df is None or self.database_df.empty:
+                messagebox.showinfo("Info", "No database to export. Please Build Database first.")
+                return
+            
+            folder = filedialog.askdirectory(title="Select folder to save Database file")
+            if not folder:
+                return
+            
+            now = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_name = f"Database_experian_{now}.xlsx"
+            out_path = Path(folder) / file_name
+            
+            with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+                self.database_df.to_excel(writer, sheet_name="Database", index=False)
+            
+            messagebox.showinfo("Exported", f"Database exported to:\n{out_path}")
+            self.status_label.configure(text=f"✓ Database exported: {out_path.name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export database:\n{str(e)}")
             import traceback
             traceback.print_exc()
 
