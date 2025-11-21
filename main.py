@@ -549,13 +549,13 @@ class PDFtoExcelApp(ctk.CTk):
         self.loading_frame.place(relx=0.5, rely=0.5, anchor="center")
         
         # Loading message
-        loading_message = ctk.CTkLabel(
+        self.loading_message_label = ctk.CTkLabel(
             self.loading_frame,
             text=message,
             font=ctk.CTkFont(size=16, weight="bold"),
             text_color=("black", "white")
         )
-        loading_message.pack(pady=20)
+        self.loading_message_label.pack(pady=20)
         
         # GIF animation label
         self.loading_gif_label = ctk.CTkLabel(
@@ -579,33 +579,42 @@ class PDFtoExcelApp(ctk.CTk):
         self.loading_current_frame = 0
         self.animate_loading_gif()
         
-        # Update display
-        self.update()
+        # Update display (use update_idletasks to prevent blocking)
+        self.update_idletasks()
     
     def animate_loading_gif(self):
         """Animate the loading GIF"""
         if not self.loading_gif_label or not self.loading_gif_frames:
             return
-            
-        # Update frame
-        if self.loading_current_frame >= len(self.loading_gif_frames):
-            self.loading_current_frame = 0
-            
-        self.loading_gif_label.configure(image=self.loading_gif_frames[self.loading_current_frame])
-        self.loading_current_frame += 1
         
-        # Schedule next frame (adjust timing as needed)
-        self.loading_animation_job = self.after(100, self.animate_loading_gif)
+        try:
+            # Update frame
+            if self.loading_current_frame >= len(self.loading_gif_frames):
+                self.loading_current_frame = 0
+                
+            self.loading_gif_label.configure(image=self.loading_gif_frames[self.loading_current_frame])
+            self.loading_current_frame += 1
+            
+            # Schedule next frame (50ms = 20fps for smoother animation)
+            self.loading_animation_job = self.after(50, self.animate_loading_gif)
+        except Exception:
+            # Silently handle errors if label is destroyed
+            pass
     
     def update_loading_progress(self, progress, message=None):
         """Update loading progress (0-100)"""
-        if self.loading_progress_label:
-            self.loading_progress_label.configure(text=f"{progress}%")
-            
-        if message and hasattr(self, 'loading_message_label'):
-            self.loading_message_label.configure(text=message)
-            
-        self.update()
+        try:
+            if self.loading_progress_label:
+                self.loading_progress_label.configure(text=f"{progress}%")
+                
+            if message and hasattr(self, 'loading_message_label'):
+                self.loading_message_label.configure(text=message)
+                
+            # Use update_idletasks() to prevent blocking
+            self.update_idletasks()
+        except Exception:
+            # Silently handle errors
+            pass
     
     def hide_loading_screen(self):
         """Hide loading screen"""
@@ -2350,13 +2359,11 @@ class PDFtoExcelApp(ctk.CTk):
                     print(f"\n📄 Processing file {file_idx + 1}/{total_files}: {file_name}")
                     df = self.file_previews[file_name]
                     if df.empty:
-                        print(f"⚠️  Skipping {file_name} - empty DataFrame")
                         failed_extractions += 1
                         continue
                     
                     # Extract data from this file's DataFrame (can return multiple rows)
                     extracted_rows = self.extract_database_row(df, file_name)
-                    print(f"🔍 Extraction result type: {type(extracted_rows)}, Content: {extracted_rows is not None}")
                     
                     if extracted_rows and isinstance(extracted_rows, list):
                         # Multiple rows returned (multiple contributing factors)
@@ -2364,25 +2371,20 @@ class PDFtoExcelApp(ctk.CTk):
                         if valid_rows:
                             database_rows.extend(valid_rows)
                             successful_extractions += 1
-                            print(f"✅ Successfully extracted {len(valid_rows)} rows from {file_name}")
                             # Debug: Show sample of extracted data
                             sample_row = valid_rows[0]
                             print(f"   📋 Sample data: i-SCORE={sample_row.get('i_SCORE', 'N/A')}, Risk_Grade={sample_row.get('Risk_Grade', 'N/A')}")
                             print(f"   📋 Contributing Factor: {sample_row.get('Key_Contributing_Factor', 'N/A')[:50]}...")
                         else:
                             failed_extractions += 1
-                            print(f"❌ Failed to extract valid data from {file_name} - all rows empty")
                     else:
                         failed_extractions += 1
-                        print(f"❌ Failed to extract data from {file_name} - got {type(extracted_rows)}")
                 
                 # Create database DataFrame
                 if database_rows:
                     self.database_df = pd.DataFrame(database_rows)
-                    print(f"\n📊 Multi-table database created with {len(database_rows)} records")
                 else:
                     self.database_df = pd.DataFrame()
-                    print(f"\n❌ No multi-table data extracted from any files")
                 
                 def finish_build():
                     self.update_loading_progress(100)
@@ -2436,7 +2438,6 @@ class PDFtoExcelApp(ctk.CTk):
         try:
             base_row_data = {}
             
-            print(f"🔍 Extracting data from {file_name}")
             
             # Helper function to find value in PARTICULARS table
             def find_particulars_value(label_text):
@@ -2449,7 +2450,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "PARTICULARS OF THE SUBJECT PROVIDED BY YOU" in cell_str.upper():
                             particulars_found = True
-                            print(f"✅ Found PARTICULARS table at row {idx}")
                             break
                     
                     if particulars_found:
@@ -2465,11 +2465,9 @@ class PDFtoExcelApp(ctk.CTk):
                                     if col_idx + 1 < len(search_row):
                                         value = search_row.iloc[col_idx + 1]
                                         result = str(value).strip() if pd.notna(value) else ""
-                                        print(f"✅ Found PARTICULARS {label_text}: '{result}'")
                                         return result
                         break
                 
-                print(f"❌ Could not find PARTICULARS {label_text}")
                 return ""
             
             # Helper function to find value in SUMMARY CREDIT INFORMATION table
@@ -2483,7 +2481,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "SUMMARY CREDIT INFORMATION" in cell_str.upper():
                             summary_found = True
-                            print(f"✅ Found SUMMARY CREDIT INFORMATION table at row {idx}")
                             break
                     
                     if summary_found:
@@ -2499,11 +2496,9 @@ class PDFtoExcelApp(ctk.CTk):
                                     if col_idx + 1 < len(search_row):
                                         value = search_row.iloc[col_idx + 1]
                                         result = str(value).strip() if pd.notna(value) else ""
-                                        print(f"✅ Found SUMMARY {label_text}: '{result}'")
                                         return result
                         break
                 
-                print(f"❌ Could not find SUMMARY {label_text}")
                 return ""
             
             # Helper function to find value in CREDIT SCORE table
@@ -2517,7 +2512,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "CREDIT SCORE" in cell_str.upper() or "i-SCORE" in cell_str.upper():
                             credit_score_found = True
-                            print(f"✅ Found CREDIT SCORE table at row {idx}")
                             break
                     
                     if credit_score_found:
@@ -2540,7 +2534,6 @@ class PDFtoExcelApp(ctk.CTk):
                                             numbers = re.findall(r'\d+', cell_str)
                                             value = numbers[0] if numbers else ""
                                         result = str(value).strip() if pd.notna(value) else ""
-                                        print(f"✅ Found i-SCORE: '{result}'")
                                         return result
                                 
                                 # Special handling for Key Contributing Factors - look for bullet points
@@ -2554,22 +2547,34 @@ class PDFtoExcelApp(ctk.CTk):
                                             if pd.notna(next_cell):
                                                 factors_text += str(next_cell).strip()
                                         
+                                        # Define section headers that indicate end of contributing factors
+                                        section_headers = [
+                                            "SHAREHOLDING INTEREST", "INTEREST IN COMPANY", 
+                                            "SUMMARY CREDIT INFORMATION", "KEY STATISTICS",
+                                            "PARTICULARS", "CREDIT REPORT", "NOTE:"
+                                        ]
+                                        
                                         # Check following rows for more factors
                                         for factor_idx in range(search_idx + 1, min(search_idx + 10, len(df))):
                                             if factor_idx >= len(df):
                                                 break
                                             factor_row = df.iloc[factor_idx]
+                                            
+                                            # Check if we've hit a new section header
+                                            row_text = " ".join([str(cell).strip() for cell in factor_row if pd.notna(cell)])
+                                            if any(header in row_text.upper() for header in section_headers):
+                                                break  # Stop collecting factors
+                                            
                                             for factor_col_idx, factor_cell in enumerate(factor_row):
                                                 factor_str = str(factor_cell).strip() if pd.notna(factor_cell) else ""
                                                 # Look for bullet points or continuation text
-                                                if "•" in factor_str or (len(factor_str) > 10 and not any(keyword in factor_str.lower() for keyword in ["summary", "particular", "experian", "page"])):
+                                                if "•" in factor_str or (len(factor_str) > 10 and not any(keyword in factor_str.lower() for keyword in ["summary", "particular", "experian", "page", "note:", "shareholding"])):
                                                     if factors_text:
                                                         factors_text += " " + factor_str
                                                     else:
                                                         factors_text = factor_str
                                         
                                         result = factors_text.strip()
-                                        print(f"✅ Found Contributing Factors: '{result[:100]}...'")
                                         return result
                                 
                                 # Regular label matching
@@ -2578,12 +2583,94 @@ class PDFtoExcelApp(ctk.CTk):
                                     if col_idx + 1 < len(search_row):
                                         value = search_row.iloc[col_idx + 1]
                                         result = str(value).strip() if pd.notna(value) else ""
-                                        print(f"✅ Found CREDIT SCORE {label_text}: '{result}'")
                                         return result
                         break
                 
-                print(f"❌ Could not find CREDIT SCORE {label_text}")
                 return ""
+            
+            # Helper function to extract KEY STATISTICS Earliest/Latest Approved Facilities
+            def find_key_statistics_facilities():
+                """Find Earliest and Latest 3 Approved Facilities from KEY STATISTICS table"""
+                key_stats_found = False
+                earliest_facility = {"type": "-", "date": "-"}
+                latest_facilities = []
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the KEY STATISTICS table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "KEY STATISTICS" in cell_str.upper():
+                            key_stats_found = True
+                            break
+                    
+                    if key_stats_found:
+                        # Look for Earliest and Latest facilities in the following rows
+                        for search_idx in range(idx + 1, min(idx + 20, len(df))):
+                            if search_idx >= len(df):
+                                break
+                            search_row = df.iloc[search_idx]
+                            row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in search_row]
+                            
+                            # Check for "Earliest Approved Facilites"
+                            for col_idx, cell_str in enumerate(row_data):
+                                if "Earliest Approved" in cell_str and "Facility Type" in cell_str:
+                                    # Found Earliest row, get facility type and date from next columns
+                                    if col_idx + 1 < len(row_data):
+                                        earliest_facility["type"] = row_data[col_idx + 1].strip()
+                                    if col_idx + 2 < len(row_data):
+                                        earliest_facility["date"] = row_data[col_idx + 2].strip()
+                                    break
+                                
+                                # Check for "Latest 3 Approved Facilites"
+                                elif "Latest 3 Approved" in cell_str or "Latest Approved" in cell_str:
+                                    # Found Latest 3 header row, get first facility from same row
+                                    if col_idx + 1 < len(row_data) and col_idx + 2 < len(row_data):
+                                        facility_type = row_data[col_idx + 1].strip()
+                                        facility_date = row_data[col_idx + 2].strip()
+                                        if facility_type and facility_type != "":
+                                            latest_facilities.append({"type": facility_type, "date": facility_date})
+                                    
+                                    # Continue looking for the remaining 2 facilities in next rows
+                                    for next_idx in range(search_idx + 1, min(search_idx + 5, len(df))):
+                                        if next_idx >= len(df):
+                                            break
+                                        next_row = df.iloc[next_idx]
+                                        next_row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in next_row]
+                                        
+                                        # Look for rows with facility type and date (should be in first few columns after blank)
+                                        # Structure: [blank] | FACILITY TYPE | DATE
+                                        for nc_idx in range(len(next_row_data) - 1):
+                                            if next_row_data[nc_idx] and next_row_data[nc_idx + 1]:
+                                                # Check if this looks like a facility type (all caps, has words)
+                                                if len(next_row_data[nc_idx]) > 5 and next_row_data[nc_idx].isupper():
+                                                    facility_type = next_row_data[nc_idx].strip()
+                                                    facility_date = next_row_data[nc_idx + 1].strip()
+                                                    
+                                                    # Validate date format (DD-MM-YYYY)
+                                                    if re.match(r'\d{2}-\d{2}-\d{4}', facility_date):
+                                                        latest_facilities.append({"type": facility_type, "date": facility_date})
+                                                        break
+                                        
+                                        # Stop if we have 3 latest facilities
+                                        if len(latest_facilities) >= 3:
+                                            break
+                                    break
+                        
+                        # Stop after processing KEY STATISTICS section
+                        if earliest_facility["type"] != "-" or len(latest_facilities) > 0:
+                            break
+                
+                # Ensure we have exactly 3 latest facilities (pad with empty if needed)
+                while len(latest_facilities) < 3:
+                    latest_facilities.append({"type": "-", "date": "-"})
+                
+                # Only take first 3 if more were found
+                latest_facilities = latest_facilities[:3]
+                
+                if not key_stats_found:
+                    pass
+                
+                return earliest_facility, latest_facilities
             
             # Helper function to extract SHAREHOLDING INTEREST data
             def find_shareholding_interests():
@@ -2598,7 +2685,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "SHAREHOLDING INTEREST" in cell_str.upper() or ("INTEREST IN COMPANY" in cell_str.upper() and "BUSINESS" in cell_str.upper()):
                             shareholding_found = True
-                            print(f"✅ Found SHAREHOLDING INTEREST table at row {idx}")
                             break
                     
                     if shareholding_found and not header_found:
@@ -2613,7 +2699,6 @@ class PDFtoExcelApp(ctk.CTk):
                             if ("No" in header_text and "Name" in header_text and "Position" in header_text and 
                                 "Appointed" in header_text):
                                 header_found = True
-                                print(f"✅ Found column headers at row {header_idx}")
                                 
                                 # Now look for data rows after the header
                                 for data_idx in range(header_idx + 1, min(header_idx + 50, len(df))):
@@ -2655,12 +2740,10 @@ class PDFtoExcelApp(ctk.CTk):
                                                 interest_data[key] = clean_value
                                         
                                         interests.append(interest_data)
-                                        print(f"✅ Found business interest {len(interests)}: {interest_data['Name'][:50]}... (Position: {interest_data['Position']})")
                                 break  # Found headers, processed data
                         break  # Found shareholding table
                 
                 if not interests:
-                    print(f"❌ Could not find SHAREHOLDING INTEREST data")
                     # Return empty interest to maintain structure
                     interests.append({
                         'No': "-",
@@ -2674,7 +2757,6 @@ class PDFtoExcelApp(ctk.CTk):
                         'Last_Updated_by_Experian': "-"
                     })
                 
-                print(f"🎯 Found {len(interests)} business interest(s) in SHAREHOLDING INTEREST table")
                 return interests
             
             # Helper function to extract CCRIS ENTITY data
@@ -2688,7 +2770,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "CCRIS ENTITY SELECTED BY YOU" in cell_str.upper():
                             ccris_found = True
-                            print(f"✅ Found CCRIS ENTITY table at row {idx}")
                             break
                     
                     if ccris_found:
@@ -2705,11 +2786,9 @@ class PDFtoExcelApp(ctk.CTk):
                                     if col_idx + 1 < len(search_row):
                                         value = search_row.iloc[col_idx + 1]
                                         result = str(value).strip() if pd.notna(value) else "-"
-                                        print(f"✅ Found CCRIS Entity Key: '{result}'")
                                         return result if result else "-"
                         break
                 
-                print(f"❌ Could not find CCRIS Entity Key")
                 return "-"
             
             # Helper function to extract SUMMARY CREDIT REPORT data
@@ -2729,7 +2808,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "SUMMARY CREDIT REPORT" in cell_str.upper():
                             summary_found = True
-                            print(f"✅ Found SUMMARY CREDIT REPORT table at row {idx}")
                             break
                     
                     if summary_found:
@@ -2750,7 +2828,6 @@ class PDFtoExcelApp(ctk.CTk):
                                         result['A_App_No_Application'] = row_data[col_idx + 1].strip()
                                     if col_idx + 2 < len(row_data):
                                         result['A_App_Ttl_Amnt'] = row_data[col_idx + 2].strip()
-                                    print(f"✅ Found A. Approved data: {result['A_App_No_Application']}, {result['A_App_Ttl_Amnt']}")
                                     break
                                     
                                 elif "B. Pending" in cell_str:
@@ -2759,7 +2836,6 @@ class PDFtoExcelApp(ctk.CTk):
                                         result['B_Pend_No_Application'] = row_data[col_idx + 1].strip()
                                     if col_idx + 2 < len(row_data):
                                         result['B_Pend_Ttl_Amnt'] = row_data[col_idx + 2].strip()
-                                    print(f"✅ Found B. Pending data: {result['B_Pend_No_Application']}, {result['B_Pend_Ttl_Amnt']}")
                                     break
                         break
                 
@@ -2768,7 +2844,6 @@ class PDFtoExcelApp(ctk.CTk):
                     if not value or value == "":
                         result[key] = "-"
                 
-                print(f"🎯 SUMMARY CREDIT REPORT extraction complete: {result}")
                 return result
 
             # Helper function to extract Subject Status data
@@ -2782,7 +2857,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "Subject Status" in cell_str:
                             subject_status_found = True
-                            print(f"✅ Found Subject Status table at row {idx}")
                             break
                     
                     if subject_status_found:
@@ -2799,11 +2873,9 @@ class PDFtoExcelApp(ctk.CTk):
                                     if col_idx + 1 < len(search_row):
                                         value = search_row.iloc[col_idx + 1]
                                         result = str(value).strip() if pd.notna(value) else "-"
-                                        print(f"✅ Found Warning Remark: '{result}'")
                                         return result if result else "-"
                         break
                 
-                print(f"❌ Could not find Warning Remark")
                 return "-"
             
             # Helper function to extract SUMMARY OF POTENTIAL & CURRENT LIABILITIES data
@@ -2824,7 +2896,6 @@ class PDFtoExcelApp(ctk.CTk):
                         cell_str = str(cell).strip() if pd.notna(cell) else ""
                         if "SUMMARY OF POTENTIAL" in cell_str.upper() and "CURRENT LIABILITIES" in cell_str.upper():
                             liabilities_found = True
-                            print(f"✅ Found SUMMARY OF POTENTIAL & CURRENT LIABILITIES table at row {idx}")
                             break
                     
                     if liabilities_found:
@@ -2847,21 +2918,18 @@ class PDFtoExcelApp(ctk.CTk):
                                         result['AsBorr_Total_Limit_RM'] = row_data[col_idx + 2].strip()
                                     if col_idx + 3 < len(row_data):
                                         result['AsBorr_FEC_Limit_RM'] = row_data[col_idx + 3].strip()
-                                    print(f"✅ Found As Borrower data: {result['AsBorr_Outstanding_RM']}, {result['AsBorr_Total_Limit_RM']}, {result['AsBorr_FEC_Limit_RM']}")
                                     break
                                     
                                 elif "Legal Action Taken" in cell_str:
                                     # Found Legal Action Taken, extract value from next column
                                     if col_idx + 1 < len(row_data):
                                         result['Legal_Action_Taken'] = row_data[col_idx + 1].strip()
-                                    print(f"✅ Found Legal Action Taken: {result['Legal_Action_Taken']}")
                                     break
                                     
                                 elif "Special Attention Account" in cell_str:
                                     # Found Special Attention Account, extract value from next column
                                     if col_idx + 1 < len(row_data):
                                         result['Special_Attention_Account'] = row_data[col_idx + 1].strip()
-                                    print(f"✅ Found Special Attention Account: {result['Special_Attention_Account']}")
                                     break
                         break
                 
@@ -2870,7 +2938,6 @@ class PDFtoExcelApp(ctk.CTk):
                     if not value or value == "":
                         result[key] = "-"
                 
-                print(f"🎯 SUMMARY OF POTENTIAL & CURRENT LIABILITIES extraction complete: {result}")
                 return result
             
             # Helper function to extract Legal Suits and Bankruptcy data
@@ -2892,7 +2959,6 @@ class PDFtoExcelApp(ctk.CTk):
                             match = re.search(r'Total:\s*(\d+)', cell_str, re.IGNORECASE)
                             if match:
                                 result['Legal_Suits_Defendant'] = match.group(1)
-                                print(f"✅ Found Legal Suits Defendant Total: {result['Legal_Suits_Defendant']}")
                         
                         # Check for "LEGAL SUITS - SUBJECT AS PLAINTIFF Total: X"
                         elif "LEGAL SUITS" in cell_str.upper() and "SUBJECT AS PLAINTIFF" in cell_str.upper() and "TOTAL" in cell_str.upper():
@@ -2900,7 +2966,6 @@ class PDFtoExcelApp(ctk.CTk):
                             match = re.search(r'Total:\s*(\d+)', cell_str, re.IGNORECASE)
                             if match:
                                 result['Legal_Suits_Plaintiff'] = match.group(1)
-                                print(f"✅ Found Legal Suits Plaintiff Total: {result['Legal_Suits_Plaintiff']}")
                         
                         # Check for "BANKRUPTCY ACTION" header
                         elif "BANKRUPTCY ACTION" in cell_str.upper():
@@ -2917,36 +2982,138 @@ class PDFtoExcelApp(ctk.CTk):
                                         match = re.search(r'Total:\s*(\d+)', search_str, re.IGNORECASE)
                                         if match:
                                             result['Bankruptcy_Action'] = match.group(1)
-                                            print(f"✅ Found Bankruptcy Action Total: {result['Bankruptcy_Action']}")
                                             break
                                 
                                 if result['Bankruptcy_Action'] != "-":
                                     break
                 
-                print(f"🎯 Legal Suits & Bankruptcy extraction complete: {result}")
                 return result
             
-            # Helper function to extract TRADE / CREDIT REFERENCE data
+            # Helper function to extract KEY STATISTICS data
+            def find_key_statistics_data():
+                """Find data from KEY STATISTICS table"""
+                key_stats_found = False
+                key_stats_start_idx = -1
+                result = {
+                    'SF_No_of_Facilities': "-",
+                    'SF_Total_Outstanding_Balance_RM': "-",
+                    'SF_Total_Outstanding_Balance_Against_Total_Limit': "-",
+                    'SF_Highest_No_of_Installments_Arrears_Last_12_months': "-",
+                    'UF_No_of_Facilities': "-",
+                    'UF_Total_Outstanding_Balance_RM': "-",
+                    'UF_Total_Outstanding_Balance_Against_Total_Limit': "-",
+                    'UF_Highest_No_of_Installments_Arrears_Last_12_months': "-",
+                    'CC_Average_Utilisation_Last_6_months': "-",
+                    'ORC_Average_Utilisation_Last_6_months': "-",
+                    'CHC_Min_Utilisation_Last_12_months_RM': "-",
+                    'CHC_Max_Utilisation_Last_12_months_RM': "-",
+                    'NHEF_No_of_Accounts': "-",
+                    'LL_No_of_Accounts': "-",
+                    'FL_No_of_Accounts': "-"
+                }
+                
+                # Track which section we're in
+                current_section = None
+                
+                for idx, row in df.iterrows():
+                    # Check if we found the KEY STATISTICS table header
+                    for col_idx, cell in enumerate(row):
+                        cell_str = str(cell).strip() if pd.notna(cell) else ""
+                        if "KEY STATISTICS" in cell_str.upper():
+                            key_stats_found = True
+                            key_stats_start_idx = idx
+                            break
+                    
+                    if key_stats_found:
+                        row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in row]
+                        
+                        # Identify section headers
+                        for col_idx, cell_str in enumerate(row_data):
+                            if "Secured Facilities" in cell_str:
+                                current_section = "SF"
+                            elif "Unsecured Facilities" in cell_str:
+                                current_section = "UF"
+                            elif cell_str == "Credit Card":
+                                current_section = "CC"
+                            elif "Other Revolving Credits" in cell_str:
+                                current_section = "ORC"
+                            elif "Charge Card" in cell_str:
+                                current_section = "CHC"
+                            elif "National Higher Educational Financing" in cell_str:
+                                current_section = "NHEF"
+                            elif "Local Lenders" in cell_str:
+                                current_section = "LL"
+                            elif "Foreign Lenders" in cell_str:
+                                current_section = "FL"
+                            
+                            # Extract data based on current section
+                            if current_section == "SF":
+                                if "No. of Facilities" in cell_str and col_idx + 1 < len(row_data):
+                                    result['SF_No_of_Facilities'] = row_data[col_idx + 1]
+                                elif "Total Outstanding Balance (RM)" in cell_str and col_idx + 1 < len(row_data):
+                                    result['SF_Total_Outstanding_Balance_RM'] = row_data[col_idx + 1]
+                                elif "Total Outstanding Balance Against Total Limit" in cell_str and col_idx + 1 < len(row_data):
+                                    result['SF_Total_Outstanding_Balance_Against_Total_Limit'] = row_data[col_idx + 1]
+                                elif "Highest No. of Installments Arrears Last 12 months" in cell_str and col_idx + 1 < len(row_data):
+                                    result['SF_Highest_No_of_Installments_Arrears_Last_12_months'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "UF":
+                                if "No. of Facilities" in cell_str and col_idx + 1 < len(row_data):
+                                    result['UF_No_of_Facilities'] = row_data[col_idx + 1]
+                                elif "Total Outstanding Balance (RM)" in cell_str and col_idx + 1 < len(row_data):
+                                    result['UF_Total_Outstanding_Balance_RM'] = row_data[col_idx + 1]
+                                elif "Total Outstanding Balance Against Total Limit" in cell_str and col_idx + 1 < len(row_data):
+                                    result['UF_Total_Outstanding_Balance_Against_Total_Limit'] = row_data[col_idx + 1]
+                                elif "Highest No. of Installments Arrears Last 12 months" in cell_str and col_idx + 1 < len(row_data):
+                                    result['UF_Highest_No_of_Installments_Arrears_Last_12_months'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "CC":
+                                if "Average Utilisation Last 6 months" in cell_str and col_idx + 1 < len(row_data):
+                                    result['CC_Average_Utilisation_Last_6_months'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "ORC":
+                                if "Average Utilisation Last 6 months" in cell_str and col_idx + 1 < len(row_data):
+                                    result['ORC_Average_Utilisation_Last_6_months'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "CHC":
+                                if "Min Utilisation Last 12 months (RM)" in cell_str and col_idx + 1 < len(row_data):
+                                    result['CHC_Min_Utilisation_Last_12_months_RM'] = row_data[col_idx + 1]
+                                elif "Max Utilisation Last 12 months (RM)" in cell_str and col_idx + 1 < len(row_data):
+                                    result['CHC_Max_Utilisation_Last_12_months_RM'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "NHEF":
+                                if "No. of Accounts" in cell_str and col_idx + 1 < len(row_data):
+                                    result['NHEF_No_of_Accounts'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "LL":
+                                if "No. of Accounts" in cell_str and col_idx + 1 < len(row_data):
+                                    result['LL_No_of_Accounts'] = row_data[col_idx + 1]
+                            
+                            elif current_section == "FL":
+                                if "No. of Accounts" in cell_str and col_idx + 1 < len(row_data):
+                                    result['FL_No_of_Accounts'] = row_data[col_idx + 1]
+                        
+                        # Stop after sufficient rows (typically within 40-50 rows from start)
+                        if key_stats_start_idx != -1 and idx > key_stats_start_idx + 50:
+                            break
+                
+                if not key_stats_found:
+                    pass
+                
+                # Clean results - replace empty with "-"
+                for key, value in result.items():
+                    if not value or value == "":
+                        result[key] = "-"
+                
+                return result
+            
+            # Helper function to extract TRADE / CREDIT REFERENCE data (can have multiple records)
             def find_trade_credit_reference_data():
-                """Find data from TRADE / CREDIT REFERENCE (CR) table"""
+                """Find all data from TRADE / CREDIT REFERENCE (CR) table - returns list of records"""
                 trade_found = False
                 trade_start_idx = -1
-                result = {
-                    'TCR_Subject_Name': "-",
-                    'TCR_Creditors_Name': "-",
-                    'TCR_Creditors_Contact': "-",
-                    'TCR_Ref_No': "-",
-                    'TCR_Industry': "-",
-                    'TCR_Solicitors_Name': "-",
-                    'TCR_Guarantor_Owner': "-",
-                    'TCR_Subject_ID': "-",
-                    'TCR_Amount_Due': "-",
-                    'TCR_Aging_Days': "-",
-                    'TCR_Debt_Type': "-",
-                    'TCR_Document_Status_Date': "-",
-                    'TCR_Solicitors_Contact': "-",
-                    'TCR_Remark': "-"
-                }
+                trade_records = []  # Store multiple trade/credit reference records
+                current_record = {}
                 
                 # Mapping of label patterns to result keys
                 label_mapping = {
@@ -2973,40 +3140,57 @@ class PDFtoExcelApp(ctk.CTk):
                         if "TRADE / CREDIT REFERENCE" in cell_str.upper() and "(CR)" in cell_str.upper():
                             trade_found = True
                             trade_start_idx = idx
-                            print(f"✅ Found TRADE / CREDIT REFERENCE (CR) table at row {idx}")
                             break
                     
                     if trade_found:
                         # Extract label-value pairs from the table
-                        # The structure is: Label1 | Value1 | Label2 | Value2
                         row_data = [str(cell).strip() if pd.notna(cell) else "" for cell in row]
                         
-                        # Check each cell for matching labels
+                        # Check if this row starts a new record (contains 'Creditor's Name')
+                        has_creditor_name = False
+                        for col_idx, cell_str in enumerate(row_data):
+                            if cell_str == "Creditor's Name" and col_idx + 1 < len(row_data):
+                                creditor_value = row_data[col_idx + 1].strip()
+                                if creditor_value and creditor_value != "":
+                                    # Save previous record if it exists
+                                    if current_record and current_record.get('TCR_Creditors_Name', '-') != '-':
+                                        trade_records.append(current_record)
+                                    # Start new record
+                                    current_record = {key: "-" for key in label_mapping.values()}
+                                    has_creditor_name = True
+                                    break
+                        
+                        # Extract all fields in current row
                         for col_idx, cell_str in enumerate(row_data):
                             for label_pattern, result_key in label_mapping.items():
                                 if cell_str == label_pattern:
-                                    # Found a label, get value from next column
                                     if col_idx + 1 < len(row_data):
                                         value = row_data[col_idx + 1].strip()
                                         if value and value != "":
-                                            result[result_key] = value
-                                            print(f"✅ Found TCR {label_pattern}: {value}")
+                                            if current_record or has_creditor_name:
+                                                if not current_record:
+                                                    current_record = {key: "-" for key in label_mapping.values()}
+                                                current_record[result_key] = value
                                     break
                         
-                        # Stop after finding enough data rows (typically within 10-15 rows)
-                        if trade_start_idx != -1 and idx > trade_start_idx + 20:
+                        # Stop after finding enough data rows
+                        if trade_start_idx != -1 and idx > trade_start_idx + 30:
                             break
                 
+                # Add last record if exists
+                if current_record and current_record.get('TCR_Creditors_Name', '-') != '-':
+                    trade_records.append(current_record)
+                
                 if not trade_found:
-                    print(f"❌ TRADE / CREDIT REFERENCE (CR) table not found")
+                    pass
                 
-                # Clean results - replace empty with "-"
-                for key, value in result.items():
-                    if not value or value == "":
-                        result[key] = "-"
+                # If no records found, return empty list (will use default "-" in row generation)
+                if not trade_records:
+                    pass
+                else:
+                    pass
                 
-                print(f"🎯 TRADE / CREDIT REFERENCE extraction complete")
-                return result
+                return trade_records
             
             # Helper function to extract NON-BANK LENDER CREDIT INFORMATION data
             def find_nlci_data():
@@ -3030,7 +3214,6 @@ class PDFtoExcelApp(ctk.CTk):
                         if "NON-BANK LENDER CREDIT INFORMATION" in cell_str.upper() and "NLCI" in cell_str.upper():
                             nlci_found = True
                             nlci_start_idx = idx
-                            print(f"✅ Found NON-BANK LENDER CREDIT INFORMATION (NLCI) table at row {idx}")
                             break
                     
                     # Find where NLCI table ends (before WRITTEN-OFF ACCOUNT or next major section)
@@ -3039,14 +3222,12 @@ class PDFtoExcelApp(ctk.CTk):
                             cell_str = str(cell).strip() if pd.notna(cell) else ""
                             if "WRITTEN-OFF ACCOUNT" in cell_str.upper():
                                 nlci_end_idx = idx
-                                print(f"✅ NLCI table ends at row {idx} (WRITTEN-OFF ACCOUNT section)")
                                 break
                     
                     if nlci_found and nlci_end_idx != -1:
                         break
                 
                 if not nlci_found:
-                    print(f"❌ NON-BANK LENDER CREDIT INFORMATION (NLCI) table not found")
                     return result
                 
                 # Set end boundary if not found
@@ -3075,7 +3256,6 @@ class PDFtoExcelApp(ctk.CTk):
                                     val = row_data[col_idx + offset].replace(',', '').strip()
                                     if val and re.match(r'^\d+\.?\d*$', val):
                                         result['Ttl_Limit'] = row_data[col_idx + offset].strip()
-                                        print(f"✅ Found NLCI Ttl_Limit: {result['Ttl_Limit']}")
                                         break
                             
                             # Second TOTAL - get Ttl_Outstanding (next numeric value)
@@ -3084,7 +3264,6 @@ class PDFtoExcelApp(ctk.CTk):
                                     val = row_data[col_idx + offset].replace(',', '').strip()
                                     if val and re.match(r'^\d+\.?\d*$', val):
                                         result['Ttl_Outstanding'] = row_data[col_idx + offset].strip()
-                                        print(f"✅ Found NLCI Ttl_Outstanding: {result['Ttl_Outstanding']}")
                                         break
                                 break  # Found both totals, exit loop
                     
@@ -3108,11 +3287,9 @@ class PDFtoExcelApp(ctk.CTk):
                 if conduct_values:
                     highest = max(conduct_values)
                     result['Conduct_Highest_Value'] = str(highest)
-                    print(f"✅ Found NLCI Conduct Highest Value: {result['Conduct_Highest_Value']} (from {len(conduct_values)} values)")
                 else:
-                    print(f"❌ No conduct values found in NLCI table")
+                    pass
                 
-                print(f"🎯 NON-BANK LENDER CREDIT INFORMATION extraction complete: {result}")
                 return result
 
             # Extract base data from all tables (common to all rows)
@@ -3149,22 +3326,26 @@ class PDFtoExcelApp(ctk.CTk):
             base_row_data['Ttl_Outstanding'] = nlci_data['Ttl_Outstanding']
             base_row_data['Conduct_Highest_Value'] = nlci_data['Conduct_Highest_Value']
             
-            # Extract TRADE / CREDIT REFERENCE data
-            trade_credit_data = find_trade_credit_reference_data()
-            base_row_data['TCR_Subject_Name'] = trade_credit_data['TCR_Subject_Name']
-            base_row_data['TCR_Creditors_Name'] = trade_credit_data['TCR_Creditors_Name']
-            base_row_data['TCR_Creditors_Contact'] = trade_credit_data['TCR_Creditors_Contact']
-            base_row_data['TCR_Ref_No'] = trade_credit_data['TCR_Ref_No']
-            base_row_data['TCR_Industry'] = trade_credit_data['TCR_Industry']
-            base_row_data['TCR_Solicitors_Name'] = trade_credit_data['TCR_Solicitors_Name']
-            base_row_data['TCR_Guarantor_Owner'] = trade_credit_data['TCR_Guarantor_Owner']
-            base_row_data['TCR_Subject_ID'] = trade_credit_data['TCR_Subject_ID']
-            base_row_data['TCR_Amount_Due'] = trade_credit_data['TCR_Amount_Due']
-            base_row_data['TCR_Aging_Days'] = trade_credit_data['TCR_Aging_Days']
-            base_row_data['TCR_Debt_Type'] = trade_credit_data['TCR_Debt_Type']
-            base_row_data['TCR_Document_Status_Date'] = trade_credit_data['TCR_Document_Status_Date']
-            base_row_data['TCR_Solicitors_Contact'] = trade_credit_data['TCR_Solicitors_Contact']
-            base_row_data['TCR_Remark'] = trade_credit_data['TCR_Remark']
+            # Extract KEY STATISTICS data
+            key_stats_data = find_key_statistics_data()
+            base_row_data['SF_No_of_Facilities'] = key_stats_data['SF_No_of_Facilities']
+            base_row_data['SF_Total_Outstanding_Balance_RM'] = key_stats_data['SF_Total_Outstanding_Balance_RM']
+            base_row_data['SF_Total_Outstanding_Balance_Against_Total_Limit'] = key_stats_data['SF_Total_Outstanding_Balance_Against_Total_Limit']
+            base_row_data['SF_Highest_No_of_Installments_Arrears_Last_12_months'] = key_stats_data['SF_Highest_No_of_Installments_Arrears_Last_12_months']
+            base_row_data['UF_No_of_Facilities'] = key_stats_data['UF_No_of_Facilities']
+            base_row_data['UF_Total_Outstanding_Balance_RM'] = key_stats_data['UF_Total_Outstanding_Balance_RM']
+            base_row_data['UF_Total_Outstanding_Balance_Against_Total_Limit'] = key_stats_data['UF_Total_Outstanding_Balance_Against_Total_Limit']
+            base_row_data['UF_Highest_No_of_Installments_Arrears_Last_12_months'] = key_stats_data['UF_Highest_No_of_Installments_Arrears_Last_12_months']
+            base_row_data['CC_Average_Utilisation_Last_6_months'] = key_stats_data['CC_Average_Utilisation_Last_6_months']
+            base_row_data['ORC_Average_Utilisation_Last_6_months'] = key_stats_data['ORC_Average_Utilisation_Last_6_months']
+            base_row_data['CHC_Min_Utilisation_Last_12_months_RM'] = key_stats_data['CHC_Min_Utilisation_Last_12_months_RM']
+            base_row_data['CHC_Max_Utilisation_Last_12_months_RM'] = key_stats_data['CHC_Max_Utilisation_Last_12_months_RM']
+            base_row_data['NHEF_No_of_Accounts'] = key_stats_data['NHEF_No_of_Accounts']
+            base_row_data['LL_No_of_Accounts'] = key_stats_data['LL_No_of_Accounts']
+            base_row_data['FL_No_of_Accounts'] = key_stats_data['FL_No_of_Accounts']
+            
+            # Extract TRADE / CREDIT REFERENCE data (can be multiple records)
+            trade_credit_records = find_trade_credit_reference_data()
             
             # Keep the remaining SUMMARY CREDIT INFORMATION fields (if they still exist in the PDF)
             base_row_data['Legal_Action_Banking'] = find_summary_credit_value("Legal Action taken (from Banking)")
@@ -3177,7 +3358,6 @@ class PDFtoExcelApp(ctk.CTk):
             
             # Extract i-SCORE and calculate Risk Grade
             iscore_str = find_credit_score_value("i-SCORE")
-            print(f"🎯 Raw i-SCORE string: '{iscore_str}'")
             
             # Clean and extract numeric value from i-SCORE
             iscore_clean = ""
@@ -3189,21 +3369,18 @@ class PDFtoExcelApp(ctk.CTk):
                     iscore_clean = numbers[0]  # Take first number found
                     try:
                         iscore_num = int(iscore_clean)
-                        print(f"✅ Extracted i-SCORE number: {iscore_num}")
                     except:
                         iscore_num = 0
-                        print(f"❌ Could not convert i-SCORE to number: '{iscore_clean}'")
                 else:
-                    print(f"❌ No numeric i-SCORE found in: '{iscore_str}'")
+                    pass
             
             # Calculate risk grade
             risk_grade = ""
             if iscore_num > 0:
                 risk_grade_num = self.extract_risk_grade_from_score(iscore_num)
                 risk_grade = str(risk_grade_num) if risk_grade_num else ""
-                print(f"✅ Calculated Risk Grade: {risk_grade} (from i-SCORE: {iscore_num})")
             else:
-                print(f"❌ Cannot calculate risk grade - invalid i-SCORE: {iscore_num}")
+                pass
             
             base_row_data['i_SCORE'] = iscore_clean if iscore_clean else iscore_str
             base_row_data['Risk_Grade'] = risk_grade
@@ -3216,7 +3393,6 @@ class PDFtoExcelApp(ctk.CTk):
             
             # Extract Key Contributing Factors
             contributing_factors_raw = find_credit_score_value("Key Contributing Factors")
-            print(f"🎯 Raw Contributing Factors: '{contributing_factors_raw[:200] if contributing_factors_raw else 'None'}...'")
             
             # Process contributing factors
             contributing_factors = []
@@ -3240,39 +3416,95 @@ class PDFtoExcelApp(ctk.CTk):
             if not contributing_factors:
                 contributing_factors.append("")  # Empty factor to maintain structure
             
-            print(f"🎯 Processed {len(contributing_factors)} contributing factor(s)")
             
             # Extract SHAREHOLDING INTEREST data
             shareholding_interests = find_shareholding_interests()
             
-            # Create cross-product of contributing factors and shareholding interests only
+            # Extract KEY STATISTICS Earliest/Latest Approved Facilities
+            earliest_facility, latest_facilities = find_key_statistics_facilities()
+            
+            # Determine row count: Use MAXIMUM of three tables
+            # 1. Shareholding Interests (can be multiple)
+            # 2. Trade/Credit Reference (can be multiple)
+            # 3. Latest Facilities (up to 3)
+            shareholding_count = len(shareholding_interests)
+            trade_credit_count = len(trade_credit_records)
+            latest_facilities_count = len(latest_facilities)
+            
+            max_row_count = max(shareholding_count, trade_credit_count, latest_facilities_count)
+            
+            
+            # Combine contributing factors into single string (not multiplying)
+            factors_combined = " | ".join(contributing_factors) if contributing_factors else "-"
+            
+            # Create rows based on maximum count
             result_rows = []
-            row_index = 1
             
-            for factor_idx, factor in enumerate(contributing_factors):
-                for interest_idx, interest in enumerate(shareholding_interests):
-                    row_data = base_row_data.copy()
-                    
-                    # Add contributing factor data
-                    row_data['Key_Contributing_Factor'] = factor
-                    
-                    # Add shareholding interest data (using correct field names)
-                    row_data['No'] = interest['No']
-                    row_data['Name'] = interest['Name']
-                    row_data['Position'] = interest['Position']
-                    row_data['Appointed'] = interest['Appointed']
-                    row_data['Business_Expiry_Date'] = interest['Business_Expiry_Date']
-                    row_data['Shareholding'] = interest['Shareholding']
-                    row_data['Percentage'] = interest['Percentage']
-                    row_data['Remark'] = interest['Remark']
-                    row_data['Last_Updated_by_Experian'] = interest['Last_Updated_by_Experian']
-                    
-                    result_rows.append(row_data)
-                    
-                    print(f"✅ Created Row {row_index}: Factor={factor[:30]}..., Company={interest['Name'][:30]}...")
-                    row_index += 1
+            for row_idx in range(max_row_count):
+                row_data = base_row_data.copy()
+                
+                # Add contributing factor data (same for all rows)
+                row_data['Key_Contributing_Factor'] = factors_combined
+                
+                # Add shareholding interest data (cycle through if not enough)
+                if shareholding_count > 0:
+                    interest = shareholding_interests[row_idx % shareholding_count]
+                else:
+                    interest = {'No': "-", 'Name': "-", 'Position': "-", 'Appointed': "-",
+                               'Business_Expiry_Date': "-", 'Shareholding': "-", 'Percentage': "-",
+                               'Remark': "-", 'Last_Updated_by_Experian': "-"}
+                
+                row_data['No'] = interest['No']
+                row_data['Name'] = interest['Name']
+                row_data['Position'] = interest['Position']
+                row_data['Appointed'] = interest['Appointed']
+                row_data['Business_Expiry_Date'] = interest['Business_Expiry_Date']
+                row_data['Shareholding'] = interest['Shareholding']
+                row_data['Percentage'] = interest['Percentage']
+                row_data['Remark'] = interest['Remark']
+                row_data['Last_Updated_by_Experian'] = interest['Last_Updated_by_Experian']
+                
+                # Add Trade/Credit Reference data (cycle through if not enough)
+                if trade_credit_count > 0:
+                    tcr = trade_credit_records[row_idx % trade_credit_count]
+                else:
+                    tcr = {'TCR_Subject_Name': "-", 'TCR_Creditors_Name': "-", 'TCR_Creditors_Contact': "-",
+                          'TCR_Ref_No': "-", 'TCR_Industry': "-", 'TCR_Solicitors_Name': "-",
+                          'TCR_Guarantor_Owner': "-", 'TCR_Subject_ID': "-", 'TCR_Amount_Due': "-",
+                          'TCR_Aging_Days': "-", 'TCR_Debt_Type': "-", 'TCR_Document_Status_Date': "-",
+                          'TCR_Solicitors_Contact': "-", 'TCR_Remark': "-"}
+                
+                row_data['TCR_Subject_Name'] = tcr['TCR_Subject_Name']
+                row_data['TCR_Creditors_Name'] = tcr['TCR_Creditors_Name']
+                row_data['TCR_Creditors_Contact'] = tcr['TCR_Creditors_Contact']
+                row_data['TCR_Ref_No'] = tcr['TCR_Ref_No']
+                row_data['TCR_Industry'] = tcr['TCR_Industry']
+                row_data['TCR_Solicitors_Name'] = tcr['TCR_Solicitors_Name']
+                row_data['TCR_Guarantor_Owner'] = tcr['TCR_Guarantor_Owner']
+                row_data['TCR_Subject_ID'] = tcr['TCR_Subject_ID']
+                row_data['TCR_Amount_Due'] = tcr['TCR_Amount_Due']
+                row_data['TCR_Aging_Days'] = tcr['TCR_Aging_Days']
+                row_data['TCR_Debt_Type'] = tcr['TCR_Debt_Type']
+                row_data['TCR_Document_Status_Date'] = tcr['TCR_Document_Status_Date']
+                row_data['TCR_Solicitors_Contact'] = tcr['TCR_Solicitors_Contact']
+                row_data['TCR_Remark'] = tcr['TCR_Remark']
+                
+                # Add KEY STATISTICS Earliest Approved Facility (same for all rows)
+                row_data['EAF_Facility_Type'] = earliest_facility['type']
+                row_data['EAF_Date_Approved'] = earliest_facility['date']
+                
+                # Add KEY STATISTICS Latest Approved Facility (cycle through if not enough)
+                if latest_facilities_count > 0:
+                    latest_facility = latest_facilities[row_idx % latest_facilities_count]
+                else:
+                    latest_facility = {'type': "-", 'date': "-"}
+                
+                row_data['LAF_Facility_Type'] = latest_facility['type']
+                row_data['LAF_Date_Approved'] = latest_facility['date']
+                
+                result_rows.append(row_data)
+                
             
-            print(f"🎯 Final result: {len(result_rows)} database rows created for {file_name} ({len(contributing_factors)} factors × {len(shareholding_interests)} interests)")
             return result_rows
             
         except Exception as e:
